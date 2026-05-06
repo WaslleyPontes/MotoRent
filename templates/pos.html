@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Registrar venda</h2>
+        <form method="post" action="{{ url_for('pos') }}">
+            <div class="form-group">
+                <label for="customer_id">Cliente</label>
+                <select name="customer_id" id="customer_id" required>
+                    <option value="">Selecione um cliente</option>
+                    {% for customer in customers %}
+                        <option value="{{ customer.id }}">{{ customer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="vehicle_id">Veículo disponível</label>
+                <select name="vehicle_id" id="vehicle_id" required>
+                    <option value="">Selecione um veículo</option>
+                    {% for vehicle in available_vehicles %}
+                        <option value="{{ vehicle.id }}">{{ vehicle.brand }} {{ vehicle.model }} - {{ vehicle.plate }} ({{ vehicle.color or '—' }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="sale_price">Preço de venda</label>
+                <input type="number" step="0.01" name="sale_price" id="sale_price" required />
+            </div>
+            <div class="form-group">
+                <label for="installments">Parcelas</label>
+                <input type="number" name="installments" id="installments" value="1" min="1" required />
+            </div>
+            <div class="form-group">
+                <label for="installment_value">Valor da parcela</label>
+                <input type="number" step="0.01" name="installment_value" id="installment_value" required />
+            </div>
+            <div class="form-group">
+                <label for="payment_method">Forma de pagamento</label>
+                <select name="payment_method" id="payment_method" required>
+                    <option value="À vista">À vista</option>
+                    <option value="Cartão">Cartão</option>
+                    <option value="Boleto">Boleto</option>
+                    <option value="Pix">Pix</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button">Finalizar venda</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Vendas recentes</h2>
+        </div>
+        <table>
+            <thead>
+                <tr><th>Data</th><th>Cliente</th><th>Veículo</th><th>Placa</th><th>Valor</th><th>Parcelas</th><th>Valor parcela</th><th>Pagamento</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for sale in sales %}
+                <tr>
+                    <td>{{ sale.sale_date }}</td>
+                    <td>{{ sale.customer }}</td>
+                    <td>{{ sale.vehicle }}</td>
+                    <td>{{ sale.plate }}</td>
+                    <td>R$ {{ '%.2f'|format(sale.sale_price) }}</td>
+                    <td>{{ sale.installments }}</td>
+                    <td>R$ {{ '%.2f'|format(sale.installment_value) }}</td>
+                    <td>{{ sale.payment_method }}</td>
+                    <td>{{ sale.status }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="cards-grid">
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">👤</span><h2>{{ customer.name }}</h2></div>
+        <p class="value">Score {{ customer.score }}</p>
+        <p class="small-text">{{ customer.document_type }}: {{ customer.document }}</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">💼</span><h2>Receita do cliente</h2></div>
+        <p class="value">R$ {{ '%.2f' | format(total_revenue) }}</p>
+        <p class="small-text">Pagamentos confirmados</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">⚠️</span><h2>Saldo em atraso</h2></div>
+        <p class="value">R$ {{ '%.2f' | format(overdue_balance) }}</p>
+        <p class="small-text">Pendências atuais</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">🔍</span><h2>Risco</h2></div>
+        <p class="value">{{ risk_info.status if risk_info else 'Sem dados' }}</p>
+        <p class="small-text">{{ risk_info.recommendation if risk_info else 'Sem análise disponível' }}</p>
+    </article>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Notas internas</h2></div>
+    <div class="form-card">
+        <form method="post" action="{{ url_for('customer_profile', customer_id=customer.id) }}">
+            <div class="form-group">
+                <label for="internal_notes">Observações de atendimento</label>
+                <textarea id="internal_notes" name="internal_notes" rows="6">{{ customer.internal_notes or '' }}</textarea>
+            </div>
+            <button type="submit" class="button">Salvar notas</button>
+        </form>
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Histórico de pagamentos</h2></div>
+    <div class="table-card">
+        <table>
+            <thead><tr><th>Veículo</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Método</th></tr></thead>
+            <tbody>
+                {% for payment in payments %}
+                    <tr>
+                        <td>{{ payment.vehicle }} ({{ payment.plate }})</td>
+                        <td>R$ {{ '%.2f' | format(payment.amount) }}</td>
+                        <td>{{ payment.due_date }}</td>
+                        <td>{{ payment.status }}</td>
+                        <td>{{ payment.payment_method or '—' }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5">Nenhum pagamento registrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Multas e infrações</h2></div>
+    <div class="table-card">
+        <table>
+            <thead><tr><th>Veículo</th><th>Valor</th><th>Data</th><th>Status</th><th>Pontos</th></tr></thead>
+            <tbody>
+                {% for fine in fines %}
+                    <tr>
+                        <td>{{ fine.vehicle }} ({{ fine.plate }})</td>
+                        <td>R$ {{ '%.2f' | format(fine.amount) }}</td>
+                        <td>{{ fine.date }}</td>
+                        <td>{{ fine.status }}</td>
+                        <td>{{ fine.points }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5">Nenhuma multa registrada.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Veículos do cliente</h2></div>
+    <div class="table-card">
+        <table>
+            <thead><tr><th>Modelo</th><th>Placa</th><th>Status</th><th>Seguro</th></tr></thead>
+            <tbody>
+                {% for vehicle in vehicles %}
+                    <tr>
+                        <td>{{ vehicle.brand or '—' }} {{ vehicle.model }}</td>
+                        <td>{{ vehicle.plate }}</td>
+                        <td>{{ vehicle.status }}</td>
+                        <td>{{ vehicle.insurance }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="4">Nenhum veículo vinculado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

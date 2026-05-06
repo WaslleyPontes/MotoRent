@@ -1,0 +1,906 @@
+# Explicação linha por linha do app.py
+
+Este arquivo contém o código do app.py com números de linha para facilitar a referência.
+
+Para converter para PDF, você pode usar um editor de texto ou ferramenta online como "text to pdf" converter.
+
+1: from flask import Flask, jsonify, render_template, g, request, redirect, url_for, session, flash, send_from_directory
+2: from werkzeug.security import generate_password_hash, check_password_hash
+3: from werkzeug.utils import secure_filename
+4: from functools import wraps
+5: import sqlite3
+6: import os
+7: import smtplib
+8: import ssl
+9: from email.message import EmailMessage
+10: import time
+11: from pathlib import Path
+12: import secrets
+13: 
+14: try:
+15:     from PIL import Image
+16:     import pytesseract
+17:     OCR_AVAILABLE = True
+18: except Exception:
+19:     OCR_AVAILABLE = False
+20: 
+21: BASE_DIR = Path(__file__).resolve().parent
+22: DB_PATH = BASE_DIR / 'database.db'
+23: UPLOAD_FOLDER = BASE_DIR / 'uploads'
+24: UPLOAD_FOLDER.mkdir(exist_ok=True)
+25: 
+26: app = Flask(__name__)
+27: app.secret_key = secrets.token_urlsafe(16)
+28: 
+29: app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', '')
+30: app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+31: app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
+32: app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
+33: app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+34: app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ('true', '1', 'yes')
+35: app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'no-reply@example.com')
+36: 
+37: 
+38: def ensure_column_exists(db, table, column, definition):
+39:     cur = db.execute(f"PRAGMA table_info({table})")
+40:     columns = [row['name'] for row in cur.fetchall()]
+41:     cur.close()
+42:     if column not in columns:
+43:         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+44: 
+45: 
+46: def send_reset_email(to_email, reset_url):
+47:     server = app.config['MAIL_SERVER']
+48:     if not server:
+49:         return False
+50: 
+51:     message = EmailMessage()
+52:     message['Subject'] = 'Recuperação de senha MotoRent'
+53:     message['From'] = app.config['MAIL_DEFAULT_SENDER']
+54:     message['To'] = to_email
+55:     message.set_content(f"Olá,\n\nRecebemos uma solicitação para redefinir sua senha.\n\nUse este link para continuar:\n{reset_url}\n\nCaso não tenha solicitado, ignore esta mensagem.\n\nAtenciosamente,\nEquipe MotoRent")
+56: 
+57:     try:
+58:         if app.config['MAIL_USE_SSL']:
+59:             context = ssl.create_default_context()
+60:             with smtplib.SMTP_SSL(server, app.config['MAIL_PORT'], context=context) as smtp:
+61:                 if app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
+62:                     smtp.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+63:                 smtp.send_message(message)
+64:         else:
+65:             with smtplib.SMTP(server, app.config['MAIL_PORT']) as smtp:
+66:                 if app.config['MAIL_USE_TLS']:
+67:                     smtp.starttls(context=ssl.create_default_context())
+68:                 if app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
+69:                     smtp.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+70:                 smtp.send_message(message)
+71:         return True
+72:     except Exception:
+73:         return False
+74: 
+75: 
+76: def ensure_schema_migrations(db):
+77:     ensure_column_exists(db, 'customers', 'document_type', "TEXT DEFAULT 'CPF'")
+78:     ensure_column_exists(db, 'customers', 'internal_notes', "TEXT DEFAULT ''")
+79:     ensure_column_exists(db, 'vehicles', 'brand', "TEXT DEFAULT 'Honda'")
+80:     ensure_column_exists(db, 'vehicles', 'color', "TEXT DEFAULT 'Azul'")
+81:     ensure_column_exists(db, 'payments', 'payment_method', "TEXT DEFAULT 'Boleto'")
+82:     ensure_column_exists(db, 'documents', 'background_check', "TEXT DEFAULT 'Não'")
+83:     ensure_column_exists(db, 'users', 'reset_token', 'TEXT')
+84:     ensure_column_exists(db, 'users', 'reset_token_expires', 'INTEGER')
+85:     db.execute('CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, customer_id INTEGER, vehicle_id INTEGER, sale_price REAL, installments INTEGER, installment_value REAL, sale_date TEXT, status TEXT, payment_method TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id), FOREIGN KEY(vehicle_id) REFERENCES vehicles(id))')
+86:     db.commit()
+87: 
+88: 
+89: def get_db():
+90:     db = getattr(g, '_database', None)
+91:     if db is None:
+92:         db = g._database = sqlite3.connect(DB_PATH)
+93:         db.row_factory = sqlite3.Row
+94:         ensure_schema_migrations(db)
+95:     return db
+96: 
+97: 
+98: def query_db(query, args=(), one=False):
+99:     cur = get_db().execute(query, args)
+100:     rv = cur.fetchall()
+101:     cur.close()
+102:     return (rv[0] if rv else None) if one else rv
+103: 
+104: 
+105: @app.teardown_appcontext
+106: def close_connection(exception):
+107:     db = getattr(g, '_database', None)
+108:     if db is not None:
+109:         db.close()
+110: 
+111: 
+112: def login_required(view):
+113:     @wraps(view)
+114:     def wrapped_view(**kwargs):
+115:         if 'user_id' not in session:
+116:             return redirect(url_for('login'))
+117:         return view(**kwargs)
+118:     return wrapped_view
+119: 
+120: 
+121: def admin_required(view):
+122:     @wraps(view)
+123:     def wrapped_view(**kwargs):
+124:         if session.get('role') != 'admin':
+125:             flash('Acesso restrito a administradores.')
+126:             return redirect(url_for('index'))
+127:         return view(**kwargs)
+128:     return wrapped_view
+129: 
+130: 
+131: def roles_required(*allowed_roles):
+132:     def decorator(view):
+133:         @wraps(view)
+134:         def wrapped_view(**kwargs):
+135:             if session.get('role') not in allowed_roles:
+136:                 flash('Você não tem permissão para acessar esta área.')
+137:                 return redirect(url_for('index'))
+138:             return view(**kwargs)
+139:         return wrapped_view
+140:     return decorator
+141: 
+142: 
+143: def calculate_driver_score(customer_id):
+144:     customer = query_db('SELECT * FROM customers WHERE id = ?', (customer_id,), one=True)
+145:     if not customer:
+146:         return None
+147: 
+148:     late_count = query_db('SELECT COUNT(*) AS count FROM payments WHERE customer_id = ? AND status = ?', (customer_id, 'atrasado'), one=True)['count']
+149:     unpaid_fines = query_db('SELECT COUNT(*) AS count, SUM(amount) AS total FROM fines WHERE customer_id = ? AND status = ?', (customer_id, 'pendente'), one=True)
+150:     fine_count = unpaid_fines['count'] or 0
+151:     fine_amount = unpaid_fines['total'] or 0
+152:     base_score = int(customer['score'] or 0)
+153:     penalty = late_count * 30 + fine_count * 20 + int(fine_amount // 100)
+154:     risk_score = max(0, min(100, base_score // 10 - penalty // 5))
+155: 
+156:     status = 'Aprovado' if risk_score >= 65 else 'Atenção' if risk_score >= 45 else 'Negado'
+157:     notes = []
+158:     if late_count > 0:
+159:         notes.append(f'Histórico de {late_count} pagamento(s) atrasado(s).')
+160:     if fine_count > 0:
+161:         notes.append(f'{fine_count} multa(s) pendente(s) com valor total de R$ {fine_amount:.2f}.')
+162:     if risk_score < 50:
+163:         notes.append('Risco maior; recomenda-se análise adicional de documentos e comprovantes.')
+164: 
+165:     if not notes:
+166:         notes.append('Nenhuma irregularidade encontrada nos registros atuais.')
+167: 
+168:     return {
+169:         'risk_score': risk_score,
+170:         'status': status,
+171:         'recommendation': 'Liberar com acompanhamento' if risk_score >= 65 else 'Reforçar análise de crédito',
+172:         'notes': notes
+173:     }
+174: 
+175: 
+176: def extract_text_from_file(path):
+177:     if OCR_AVAILABLE:
+178:         try:
+179:             image = Image.open(path)
+180:             return pytesseract.image_to_string(image, lang='por')
+181:         except Exception:
+182:             return 'OCR falhou ao processar o arquivo. Verifique a instalação do Tesseract ou envie outro arquivo.'
+183: 
+184:     return 'OCR não disponível neste ambiente. Arquivo salvo com sucesso.'
+185: 
+186: 
+187: @app.route('/')
+188: @login_required
+189: def index():
+190:     total_clients = query_db('SELECT COUNT(*) AS count FROM customers', one=True)['count']
+191:     total_vehicles = query_db('SELECT COUNT(*) AS count FROM vehicles', one=True)['count']
+192:     active_rentals = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'alugado'", one=True)['count']
+193:     available_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'disponível'", one=True)['count']
+194:     maintenance_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'manutenção'", one=True)['count']
+195:     overdue_payments = query_db("SELECT COUNT(*) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
+196:     overdue_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'atrasado'", one=True)['total'] or 0
+197:     total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
+198:     predicted_revenue = query_db("SELECT SUM(amount) AS total FROM payments WHERE status != 'pago' AND due_date >= date('now')", one=True)['total'] or 0
+199:     operational_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'disponível' OR status = 'alugado'", one=True)['count']
+200:     occupancy_rate = round((active_rentals / total_vehicles * 100) if total_vehicles else 0, 1)
+201: 
+202:     revenue_by_month = [dict(row) for row in query_db("SELECT strftime('%Y-%m', due_date) AS month, SUM(amount) AS total FROM payments WHERE status = 'pago' GROUP BY month ORDER BY month DESC LIMIT 6")]
+203: 
+204:     vehicle_revenues = query_db("SELECT v.id, v.model, v.brand, v.status, COALESCE(SUM(p.amount),0) AS revenue FROM vehicles v LEFT JOIN payments p ON p.vehicle_id = v.id AND p.status = 'pago' GROUP BY v.id ORDER BY revenue DESC")
+205:     profit_by_vehicle = []
+206:     for row in vehicle_revenues:
+207:         row = dict(row)
+208:         estimated_cost = 9000
+209:         profit = row['revenue'] - estimated_cost
+210:         profit_by_vehicle.append({
+211:             'vehicle': f"{row['brand']} {row['model']}",
+212:             'revenue': row['revenue'],
+213:             'profit': profit
+214:         })
+215: 
+216:     customer_rows = query_db('SELECT id, name FROM customers')
+217:     customer_risks = []
+218:     for customer in customer_rows:
+219:         risk = calculate_driver_score(customer['id'])
+220:         if risk:
+221:             customer_risks.append({'name': customer['name'], 'risk': risk['risk_score'], 'status': risk['status'], 'recommendation': risk['recommendation']})
+222:     customer_risks.sort(key=lambda item: item['risk'])
+223:     top_risky_customers = customer_risks[:3]
+224: 
+225:     locations = [dict(row) for row in query_db('SELECT model, latitude, longitude, status FROM vehicles WHERE latitude IS NOT NULL AND longitude IS NOT NULL')]
+226: 
+227:     vehicle_status_counts = [dict(row) for row in query_db("SELECT status, COUNT(*) AS count FROM vehicles GROUP BY status")]
+228: 
+229:     return render_template(
+230:         'index.html',
+231:         title='Dashboard',
+232:         subtitle='Rede de locações e controle operacional',
+233:         total_clients=total_clients,
+234:         total_vehicles=total_vehicles,
+235:         active_rentals=active_rentals,
+236:         available_vehicles=available_vehicles,
+237:         maintenance_vehicles=maintenance_vehicles,
+238:         overdue_payments=overdue_payments,
+239:         overdue_amount=overdue_amount,
+240:         total_income=total_income,
+241:         predicted_revenue=predicted_revenue,
+242:         occupancy_rate=occupancy_rate,
+243:         revenue_by_month=revenue_by_month,
+244:         profit_by_vehicle=profit_by_vehicle,
+245:         top_risky_customers=top_risky_customers,
+246:         locations=locations,
+247:         vehicle_status_counts=vehicle_status_counts
+248:     )
+249: 
+250: 
+251: @app.route('/login', methods=['GET', 'POST'])
+252: def login():
+253:     if request.method == 'POST':
+254:         username = request.form['username']
+255:         password = request.form['password']
+256:         user = query_db('SELECT * FROM users WHERE username = ?', (username,), one=True)
+257:         if user and check_password_hash(user['password_hash'], password):
+258:             session.clear()
+259:             session['user_id'] = user['id']
+260:             session['username'] = user['username']
+261:             session['role'] = user['role']
+262:             return redirect(url_for('index'))
+263:         flash('Usuário ou senha incorretos.')
+264: 
+265:     return render_template('login.html', title='Login', subtitle='Acesse o painel de controle')
+266: 
+267: 
+268: @app.route('/register', methods=['GET', 'POST'])
+269: def register():
+270:     if request.method == 'POST':
+271:         username = request.form['username']
+272:         email = request.form['email']
+273:         password = request.form['password']
+274:         if query_db('SELECT id FROM users WHERE username = ?', (username,), one=True):
+275:             flash('Nome de usuário já existe.')
+276:             return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
+277: 
+278:         password_hash = generate_password_hash(password)
+279:         db = get_db()
+280:         db.execute('INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)', (username, email, password_hash, 'operator'))
+281:         db.commit()
+282:         flash('Conta criada com sucesso. Faça login agora.')
+283:         return redirect(url_for('login'))
+284: 
+285:     return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
+286: 
+287: 
+288: @app.route('/forgot-password', methods=['GET', 'POST'])
+289: def forgot_password():
+290:     reset_link = None
+291:     email_sent = False
+292:     if request.method == 'POST':
+293:         email = request.form.get('email')
+294:         user = query_db('SELECT * FROM users WHERE email = ?', (email,), one=True)
+295:         if user:
+296:             reset_token = secrets.token_urlsafe(24)
+297:             expires = int(time.time() + 3600)
+298:             db = get_db()
+299:             db.execute('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+300:                 (reset_token, expires, user['id']))
+301:             db.commit()
+302:             reset_link = url_for('reset_password', token=reset_token, _external=True)
+303:             if send_reset_email(email, reset_link):
+304:                 email_sent = True
+305:                 flash('Enviamos o link de recuperação para o seu e-mail.')
+306:             else:
+307:                 flash('Não foi possível enviar e-mail. Use o link abaixo para redefinir sua senha.')
+308:         else:
+309:             flash('E-mail não encontrado. Verifique e tente novamente.')
+310:     return render_template('forgot_password.html', title='Recuperar senha', subtitle='Redefina sua senha', reset_link=reset_link, email_sent=email_sent)
+311: 
+312: 
+313: @app.route('/reset-password/<token>', methods=['GET', 'POST'])
+314: def reset_password(token):
+315:     user = query_db('SELECT * FROM users WHERE reset_token = ?', (token,), one=True)
+316:     if not user or not user['reset_token_expires'] or user['reset_token_expires'] < int(time.time()):
+317:         flash('Token de recuperação inválido ou expirado. Solicite um novo link.')
+318:         return redirect(url_for('forgot_password'))
+319: 
+320:     if request.method == 'POST':
+321:         password = request.form['password']
+322:         confirm_password = request.form['confirm_password']
+323:         if password != confirm_password:
+324:             flash('As senhas não coincidem. Tente novamente.')
+325:             return render_template('reset_password.html', title='Redefinir senha', subtitle='Digite a nova senha')
+326: 
+327:         password_hash = generate_password_hash(password)
+328:         db = get_db()
+329:         db.execute('UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
+330:             (password_hash, user['id']))
+331:         db.commit()
+332:         flash('Senha redefinida com sucesso. Faça login novamente.')
+333:         return redirect(url_for('login'))
+334: 
+335:     return render_template('reset_password.html', title='Redefinir senha', subtitle='Digite a nova senha')
+336: 
+337: 
+338: @app.route('/logout')
+339: def logout():
+340:     session.clear()
+341:     flash('Sessão encerrada.')
+342:     return redirect(url_for('login'))
+343: 
+344: @app.route('/customers', methods=['GET', 'POST'])
+345: @login_required
+346: def customers():
+347:     if request.method == 'POST':
+348:         action = request.form.get('action', 'create')
+349:         db = get_db()
+350:         if action == 'create':
+351:             name = request.form['name']
+352:             document_type = request.form['document_type']
+353:             document = request.form['document']
+354:             email = request.form['email']
+355:             phone = request.form['phone']
+356:             score = int(request.form['score'] or 0)
+357:             internal_notes = request.form.get('internal_notes', '')
+358:             db.execute('INSERT INTO customers (name, document_type, document, email, phone, score, internal_notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+359:                 (name, document_type, document, email, phone, score, internal_notes))
+360:             db.commit()
+361:             flash('Cliente cadastrado com sucesso.')
+362:         elif action == 'update':
+363:             customer_id = int(request.form['customer_id'])
+364:             name = request.form['name']
+365:             document_type = request.form['document_type']
+366:             document = request.form['document']
+367:             email = request.form['email']
+368:             phone = request.form['phone']
+369:             score = int(request.form['score'] or 0)
+370:             internal_notes = request.form.get('internal_notes', '')
+371:             db.execute('UPDATE customers SET name = ?, document_type = ?, document = ?, email = ?, phone = ?, score = ?, internal_notes = ? WHERE id = ?',
+372:                 (name, document_type, document, email, phone, score, internal_notes, customer_id))
+373:             db.commit()
+374:             flash('Cliente atualizado com sucesso.')
+375:         elif action == 'delete':
+376:             customer_id = int(request.form['customer_id'])
+377:             db.execute('UPDATE vehicles SET owner_id = NULL WHERE owner_id = ?', (customer_id,))
+378:             db.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
+379:             db.commit()
+380:             flash('Cliente excluído com sucesso.')
+381:         return redirect(url_for('customers'))
+382: 
+383:     customers = query_db('SELECT * FROM customers ORDER BY name')
+384:     return render_template('customers.html', title='Clientes', subtitle='Cadastro e análise de condutores', customers=customers)
+385: 
+386: 
+387: @app.route('/customer/<int:customer_id>', methods=['GET', 'POST'])
+388: @login_required
+389: def customer_profile(customer_id):
+390:     db = get_db()
+391:     customer = query_db('SELECT * FROM customers WHERE id = ?', (customer_id,), one=True)
+392:     if not customer:
+393:         flash('Cliente não encontrado.')
+394:         return redirect(url_for('customers'))
+395: 
+396:     if request.method == 'POST':
+397:         internal_notes = request.form.get('internal_notes', '')
+398:         db.execute('UPDATE customers SET internal_notes = ? WHERE id = ?', (internal_notes, customer_id))
+399:         db.commit()
+400:         flash('Notas internas atualizadas com sucesso.')
+401:         return redirect(url_for('customer_profile', customer_id=customer_id))
+402: 
+403:     payments = [dict(row) for row in query_db('SELECT p.*, v.model AS vehicle, v.plate AS plate FROM payments p JOIN vehicles v ON p.vehicle_id = v.id WHERE p.customer_id = ? ORDER BY p.due_date DESC', (customer_id,))]
+404:     fines = [dict(row) for row in query_db('SELECT f.*, v.model AS vehicle, v.plate AS plate FROM fines f JOIN vehicles v ON f.vehicle_id = v.id WHERE f.customer_id = ? ORDER BY f.date DESC', (customer_id,))]
+405:     vehicles = [dict(row) for row in query_db('SELECT * FROM vehicles WHERE owner_id = ? ORDER BY model', (customer_id,))]
+406:     risk_info = calculate_driver_score(customer_id)
+407:     total_revenue = sum(p['amount'] for p in payments if p['status'] == 'pago')
+408:     overdue_balance = sum(p['amount'] for p in payments if p['status'] == 'atrasado')
+409: 
+410:     return render_template(
+411:         'customer_profile.html',
+412:         title='Perfil do cliente',
+413:         subtitle=f'Perfil e histórico de {customer["name"]}',
+414:         customer=customer,
+415:         payments=payments,
+416:         fines=fines,
+417:         vehicles=vehicles,
+418:         risk_info=risk_info,
+419:         total_revenue=total_revenue,
+420:         overdue_balance=overdue_balance
+421:     )
+422: 
+423: 
+424: @app.route('/vehicles', methods=['GET', 'POST'])
+425: @login_required
+426: def vehicles():
+427:     if request.method == 'POST':
+428:         action = request.form.get('action', 'create')
+429:         db = get_db()
+430:         if action == 'create':
+431:             model = request.form['model']
+432:             brand = request.form['brand']
+433:             plate = request.form['plate']
+434:             color = request.form['color']
+435:             status = request.form['status']
+436:             insurance = request.form['insurance']
+437:             owner_id = int(request.form['owner_id'])
+438:             db.execute('INSERT INTO vehicles (brand, model, plate, color, status, insurance, latitude, longitude, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+439:                 (brand, model, plate, color, status, insurance, -23.55, -46.63, owner_id))
+440:             db.commit()
+441:             flash('Veículo registrado com sucesso.')
+442:         elif action == 'update':
+443:             vehicle_id = int(request.form['vehicle_id'])
+444:             model = request.form['model']
+445:             brand = request.form['brand']
+446:             plate = request.form['plate']
+447:             color = request.form['color']
+448:             status = request.form['status']
+449:             insurance = request.form['insurance']
+450:             owner_id = int(request.form['owner_id'])
+451:             db.execute('UPDATE vehicles SET brand = ?, model = ?, plate = ?, color = ?, status = ?, insurance = ?, owner_id = ? WHERE id = ?',
+452:                 (brand, model, plate, color, status, insurance, owner_id, vehicle_id))
+453:             db.commit()
+454:             flash('Veículo atualizado com sucesso.')
+455:         elif action == 'delete':
+456:             vehicle_id = int(request.form['vehicle_id'])
+457:             db.execute('DELETE FROM vehicles WHERE id = ?', (vehicle_id,))
+458:             db.commit()
+459:             flash('Veículo excluído com sucesso.')
+460:         return redirect(url_for('vehicles'))
+461: 
+462:     customers = query_db('SELECT * FROM customers ORDER BY name')
+463:     raw_vehicles = query_db('SELECT v.*, c.name AS owner_name FROM vehicles v LEFT JOIN customers c ON v.owner_id = c.id ORDER BY v.model')
+464:     vehicles = [dict(row) for row in raw_vehicles]
+465:     return render_template('vehicles.html', title='Veículos', subtitle='Cadastro e controle de frota', customers=customers, vehicles=vehicles)
+466: 
+467: 
+468: @app.route('/pos', methods=['GET', 'POST'])
+469: @login_required
+470: def pos():
+471:     db = get_db()
+472:     message = None
+473:     if request.method == 'POST':
+474:         customer_id = int(request.form['customer_id'])
+475:         vehicle_id = int(request.form['vehicle_id'])
+476:         sale_price = float(request.form['sale_price'] or 0)
+477:         installments = int(request.form['installments'] or 1)
+478:         installment_value = float(request.form['installment_value'] or 0)
+479:         payment_method = request.form.get('payment_method', 'À vista')
+480:         sale_date = request.form.get('sale_date') or time.strftime('%Y-%m-%d')
+481: 
+482:         db.execute('INSERT INTO sales (customer_id, vehicle_id, sale_price, installments, installment_value, sale_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+483:             (customer_id, vehicle_id, sale_price, installments, installment_value, sale_date, 'concluída', payment_method))
+484:         db.execute('UPDATE vehicles SET status = ?, owner_id = ? WHERE id = ?', ('vendido', customer_id, vehicle_id))
+485:         db.commit()
+486:         flash('Venda registrada com sucesso e estoque atualizado.')
+487:         return redirect(url_for('pos'))
+488: 
+489:     customers = query_db('SELECT * FROM customers ORDER BY name')
+490:     available_vehicles = query_db("SELECT * FROM vehicles WHERE status = 'disponível' ORDER BY model")
+491:     sales = [dict(row) for row in query_db('SELECT s.*, c.name AS customer, v.model AS vehicle, v.plate AS plate FROM sales s JOIN customers c ON s.customer_id = c.id JOIN vehicles v ON s.vehicle_id = v.id ORDER BY s.sale_date DESC LIMIT 20')]
+492:     return render_template('pos.html', title='PDV', subtitle='Ponto de venda de motos', customers=customers, available_vehicles=available_vehicles, sales=sales)
+493: 
+494: 
+495: @app.route('/fines', methods=['GET', 'POST'])
+496: @login_required
+497: def fines():
+498:     if request.method == 'POST':
+499:         customer_id = int(request.form['customer_id'])
+500:         vehicle_id = int(request.form['vehicle_id'])
+501:         amount = float(request.form['amount'])
+502:         description = request.form['description']
+503:         date = request.form['date']
+504:         points = int(request.form['points'])
+505:         db = get_db()
+506:         db.execute('INSERT INTO fines (customer_id, vehicle_id, amount, description, date, status, points) VALUES (?, ?, ?, ?, ?, ?, ?)',
+507:             (customer_id, vehicle_id, amount, description, date, 'pendente', points))
+508:         db.commit()
+509:         flash('Multa registrada com sucesso.')
+510:         return redirect(url_for('fines'))
+511: 
+512:     customers = query_db('SELECT * FROM customers ORDER BY name')
+513:     vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
+514:     raw_fines = query_db('SELECT f.*, c.name AS customer, v.model AS vehicle FROM fines f JOIN customers c ON f.customer_id = c.id JOIN vehicles v ON f.vehicle_id = v.id ORDER BY f.date DESC')
+515:     fines_list = [dict(row) for row in raw_fines]
+516:     return render_template('fines.html', title='Multas', subtitle='Gestão de infrações e pontos', customers=customers, vehicles=vehicles, fines=fines_list)
+517: 
+518: 
+519: @app.route('/maintenance', methods=['GET', 'POST'])
+520: @login_required
+521: def maintenance():
+522:     if request.method == 'POST':
+523:         vehicle_id = int(request.form['vehicle_id'])
+524:         last_service_date = request.form['last_service_date']
+525:         next_service_date = request.form['next_service_date']
+526:         predicted_cost = float(request.form['predicted_cost'])
+527:         note = request.form['note']
+528:         db = get_db()
+529:         db.execute('INSERT INTO maintenance (vehicle_id, last_service_date, next_service_date, status, predicted_cost, note) VALUES (?, ?, ?, ?, ?, ?)',
+530:             (vehicle_id, last_service_date, next_service_date, 'programada', predicted_cost, note))
+531:         db.commit()
+532:         flash('Manutenção registrada com sucesso.')
+533:         return redirect(url_for('maintenance'))
+534: 
+535:     vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
+536:     raw_maintenance = query_db('SELECT m.*, v.model AS vehicle, v.plate AS plate FROM maintenance m JOIN vehicles v ON m.vehicle_id = v.id ORDER BY m.next_service_date ASC')
+537:     maintenance_list = [dict(row) for row in raw_maintenance]
+538:     return render_template('maintenance.html', title='Manutenção', subtitle='Manutenção preventiva e preditiva', vehicles=vehicles, maintenance_list=maintenance_list)
+539: 
+540: 
+541: @app.route('/telemetry')
+542: @login_required
+543: def telemetry():
+544:     raw_telemetry = query_db('SELECT t.*, v.model AS vehicle FROM telemetry t JOIN vehicles v ON t.vehicle_id = v.id ORDER BY t.timestamp DESC')
+545:     telemetry = [dict(row) for row in raw_telemetry]
+546:     return render_template('telemetry.html', title='Telemetria', subtitle='Dados de localização e velocidade', telemetry=telemetry)
+547: 
+548: 
+549: @app.route('/upload-document', methods=['GET', 'POST'])
+550: @login_required
+551: def upload_document():
+552:     ocr_result = None
+553:     if request.method == 'POST':
+554:         owner_type = request.form['owner_type']
+555:         raw_owner = request.form['owner_id']
+556:         doc_type = request.form['doc_type']
+557:         background_check = request.form.get('background_check', 'Não')
+558:         file = request.files.get('file')
+559: 
+560:         try:
+561:             owner_id = int(raw_owner.split(':')[-1])
+562:         except Exception:
+563:             owner_id = None
+564: 
+565:         if file and owner_id:
+566:             filename = secure_filename(file.filename)
+567:             destination = UPLOAD_FOLDER / filename
+568:             file.save(destination)
+569:             text = extract_text_from_file(destination)
+570:             db = get_db()
+571:             db.execute('INSERT INTO documents (owner_type, owner_id, doc_type, filename, note, background_check) VALUES (?, ?, ?, ?, ?, ?)',
+572:                 (owner_type, owner_id, doc_type, filename, f'OCR: {text[:120]}', background_check))
+573:             db.commit()
+574:             ocr_result = {'text': text}
+575:             flash('Documento enviado com sucesso.')
+576:         else:
+577:             flash('Selecione um arquivo válido para upload.')
+578: 
+579:     customers = query_db('SELECT * FROM customers ORDER BY name')
+580:     vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
+581:     return render_template('upload.html', title='Documentos', subtitle='Upload com OCR inteligente', customers=customers, vehicles=vehicles, ocr_result=ocr_result)
+582: 
+583: 
+584: @app.route('/background-check', methods=['GET', 'POST'])
+585: @login_required
+586: def background_check():
+587:     background_result = None
+588:     if request.method == 'POST':
+589:         customer_id = int(request.form['customer_id'])
+590:         background_result = calculate_driver_score(customer_id)
+591:         if not background_result:
+592:             flash('Cliente não encontrado.')
+593: 
+594:     customers = query_db('SELECT * FROM customers ORDER BY name')
+595:     return render_template('background_check.html', title='Background Check', subtitle='Avaliação de risco do condutor', customers=customers, background_result=background_result)
+596: 
+597: 
+598: @app.route('/manifest.json')
+599: def manifest():
+600:     return send_from_directory(app.static_folder, 'manifest.json')
+601: 
+602: 
+603: @app.route('/service-worker.js')
+604: def service_worker():
+605:     return send_from_directory(app.static_folder, 'service-worker.js')
+606: 
+607: 
+608: @app.route('/offline')
+609: def offline():
+610:     return render_template('offline.html', title='Offline', subtitle='Você está sem conexão')
+611: 
+612: 
+613: @app.route('/users', methods=['GET', 'POST'])
+614: @admin_required
+615: def users():
+616:     if request.method == 'POST':
+617:         action = request.form.get('action')
+618:         if action == 'create':
+619:             username = request.form.get('username')
+620:             email = request.form.get('email')
+621:             password = request.form.get('password')
+622:             role = request.form.get('role')
+623:             if not username or not email or not password:
+624:                 flash('Preencha todos os campos do novo usuário.')
+625:             elif query_db('SELECT id FROM users WHERE username = ?', (username,), one=True):
+626:                 flash('Nome de usuário já existe.')
+627:             else:
+628:                 password_hash = generate_password_hash(password)
+629:                 db = get_db()
+630:                 db.execute('INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
+631:                     (username, email, password_hash, role or 'operator'))
+632:                 db.commit()
+633:                 flash('Usuário criado com sucesso.')
+634:         elif action == 'update_role':
+635:             user_id = int(request.form.get('user_id'))
+636:             role = request.form.get('role')
+637:             if user_id and role:
+638:                 db = get_db()
+639:                 db.execute('UPDATE users SET role = ? WHERE id = ?', (role, user_id))
+640:                 db.commit()
+641:                 flash('Função do usuário atualizada.')
+642:         return redirect(url_for('users'))
+643: 
+644:     raw_users = query_db('SELECT id, username, email, role FROM users ORDER BY username')
+645:     users = [dict(row) for row in raw_users]
+646:     return render_template('users.html', title='Usuários', subtitle='Gerenciamento de acessos', users=users)
+647: 
+648: 
+649: @app.route('/admin')
+650: @admin_required
+651: def admin():
+652:     total_users = query_db('SELECT COUNT(*) AS count FROM users', one=True)['count']
+653:     total_customers = query_db('SELECT COUNT(*) AS count FROM customers', one=True)['count']
+654:     total_vehicles = query_db('SELECT COUNT(*) AS count FROM vehicles', one=True)['count']
+655:     total_payments = query_db('SELECT COUNT(*) AS count FROM payments', one=True)['count']
+656:     active_payments = query_db("SELECT COUNT(*) AS count FROM payments WHERE status = 'pago'", one=True)['count']
+657:     pending_payments = query_db("SELECT COUNT(*) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
+658:     total_fines = query_db('SELECT COUNT(*) AS count FROM fines', one=True)['count']
+659:     total_maintenance = query_db('SELECT COUNT(*) AS count FROM maintenance', one=True)['count']
+660:     role_counts = [dict(row) for row in query_db('SELECT role, COUNT(*) AS count FROM users GROUP BY role')]
+661:     recent_users = [dict(row) for row in query_db('SELECT id, username, email, role FROM users ORDER BY id DESC LIMIT 5')]
+662:     return render_template('admin.html', title='Admin', subtitle='Painel de administração', total_users=total_users, total_customers=total_customers, total_vehicles=total_vehicles, total_payments=total_payments, active_payments=active_payments, pending_payments=pending_payments, total_fines=total_fines, total_maintenance=total_maintenance, role_counts=role_counts, recent_users=recent_users)
+663: 
+664: 
+665: @app.route('/finance', methods=['GET', 'POST'])
+666: @roles_required('admin', 'manager')
+667: def finance():
+668:     db = get_db()
+669:     if request.method == 'POST':
+670:         action = request.form.get('action', 'create_payment')
+671:         if action == 'create_payment':
+672:             customer_id = int(request.form['customer_id'])
+673:             vehicle_id = int(request.form['vehicle_id'])
+674:             amount = float(request.form['amount'] or 0)
+675:             due_date = request.form['due_date']
+676:             status = request.form.get('status', 'pendente')
+677:             payment_method = request.form.get('payment_method', 'Boleto')
+678:             db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+679:                 (customer_id, vehicle_id, amount, due_date, status, payment_method))
+680:             db.commit()
+681:             flash('Pagamento registrado com sucesso.')
+682:             return redirect(url_for('finance'))
+683: 
+684:     total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
+685:     overdue_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'atrasado'", one=True)['total'] or 0
+686:     pending_fine_total = query_db("SELECT SUM(amount) AS total FROM fines WHERE status = 'pendente'", one=True)['total'] or 0
+687:     pending_fine_count = query_db("SELECT COUNT(*) AS count FROM fines WHERE status = 'pendente'", one=True)['count']
+688:     upcoming_maintenance = query_db("SELECT COUNT(*) AS count FROM maintenance WHERE next_service_date >= date('now') AND next_service_date <= date('now', '+30 day')", one=True)['count']
+689:     total_vehicles = query_db('SELECT COUNT(*) AS count FROM vehicles', one=True)['count']
+690:     overdue_debtors = query_db("SELECT COUNT(DISTINCT customer_id) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
+691:     payment_method_counts = [dict(row) for row in query_db("SELECT COALESCE(payment_method, 'Desconhecido') AS payment_method, COUNT(*) AS count FROM payments GROUP BY payment_method")]
+692:     payments = [dict(row) for row in query_db('SELECT p.*, c.name AS customer, c.id AS customer_id, v.model AS vehicle, v.plate AS plate FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id ORDER BY p.due_date DESC LIMIT 20')]
+693:     overdue_payments = [dict(row) for row in query_db('SELECT p.*, c.name AS customer, v.model AS vehicle FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = "atrasado" ORDER BY p.due_date DESC')]
+694:     client_options = [dict(row) for row in query_db('SELECT DISTINCT c.id, c.name FROM customers c JOIN payments p ON p.customer_id = c.id ORDER BY c.name')]
+695:     vehicles_options = [dict(row) for row in query_db('SELECT id, model, plate FROM vehicles ORDER BY model')]
+696:     revenue_history = [dict(row) for row in query_db("SELECT strftime('%Y-%m', due_date) AS month, SUM(amount) AS total FROM payments WHERE status = 'pago' GROUP BY month ORDER BY month DESC LIMIT 6")]
+697:     assets_value = total_vehicles * 12000
+698:     liabilities = overdue_amount + pending_fine_total
+699:     return render_template(
+700:         'finance.html',
+701:         title='Financeiro',
+702:         subtitle='Finanças da empresa, faturamento e indicadores',
+703:         total_income=total_income,
+704:         overdue_amount=overdue_amount,
+705:         pending_fine_total=pending_fine_total,
+706:         pending_fine_count=pending_fine_count,
+707:         upcoming_maintenance=upcoming_maintenance,
+708:         total_vehicles=total_vehicles,
+709:         overdue_debtors=overdue_debtors,
+710:         payment_method_counts=payment_method_counts,
+711:         payments=payments,
+712:         overdue_payments=overdue_payments,
+713:         client_options=client_options,
+714:         vehicles_options=vehicles_options,
+715:         revenue_history=revenue_history,
+716:         assets_value=assets_value,
+717:         liabilities=liabilities
+718:     )
+719: 
+720: 
+721: @app.route('/api/dashboard')
+722: @login_required
+723: def dashboard_api():
+724:     total_clients = query_db('SELECT COUNT(*) AS count FROM customers', one=True)['count']
+725:     total_vehicles = query_db('SELECT COUNT(*) AS count FROM vehicles', one=True)['count']
+726:     active_rentals = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'alugado'", one=True)['count']
+727:     overdue_payments = query_db("SELECT COUNT(*) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
+728:     total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
+729:     pending_fines = query_db("SELECT COUNT(*) AS count FROM fines WHERE status = 'pendente'", one=True)['count']
+730:     upcoming_maintenance = query_db("SELECT COUNT(*) AS count FROM maintenance WHERE next_service_date <= date('now', '+30 day')", one=True)['count']
+731:     overdue_debtors = query_db("SELECT COUNT(DISTINCT customer_id) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
+732:     predicted_revenue = query_db("SELECT SUM(amount) AS total FROM payments WHERE due_date >= date('now')", one=True)['total'] or 0
+733: 
+734:     vehicles = [dict(row) for row in query_db('SELECT * FROM vehicles ORDER BY id DESC LIMIT 6')]
+735:     payments = [dict(row) for row in query_db('SELECT p.id, c.name AS customer, v.model AS vehicle, p.amount, p.due_date, p.status FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id ORDER BY p.due_date DESC LIMIT 6')]
+736:     clients = [dict(row) for row in query_db('SELECT * FROM customers ORDER BY id DESC LIMIT 6')]
+737: 
+738:     locations = [
+739:         {
+740:             'vehicle': row['model'],
+741:             'lat': row['latitude'],
+742:             'lng': row['longitude'],
+743:             'status': row['status']
+744:         }
+745:         for row in query_db('SELECT model, latitude, longitude, status FROM vehicles')
+746:     ]
+747: 
+748:     rent_to_own = [
+749:         {'month': f'Mês {i}', 'value': 1000 + i * 200}
+750:         for i in range(1, 7)
+751:     ]
+752: 
+753:     status_distribution = [
+754:         {'label': 'Alugado', 'value': query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'alugado'", one=True)['count']},
+755:         {'label': 'Disponível', 'value': query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'disponível'", one=True)['count']},
+756:         {'label': 'Em manutenção', 'value': query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'manutenção'", one=True)['count']}
+757:     ]
+758: 
+759:     return jsonify({
+760:         'summary': {
+761:             'totalClients': total_clients,
+762:             'totalVehicles': total_vehicles,
+763:             'activeRentals': active_rentals,
+764:             'overduePayments': overdue_payments,
+765:             'totalIncome': total_income,
+766:             'pendingFines': pending_fines,
+767:             'upcomingMaintenance': upcoming_maintenance,
+768:             'predictedRevenue': predicted_revenue,
+769:             'overdueDebtors': overdue_debtors
+770:         },
+771:         'vehicles': vehicles,
+772:         'payments': payments,
+773:         'clients': clients,
+774:         'locations': locations,
+775:         'rentToOwn': rent_to_own,
+776:         'statusDistribution': status_distribution
+777:     })
+778: 
+779: 
+780: @app.route('/api/payments/customer/<int:customer_id>')
+781: @login_required
+782: def customer_payments_api(customer_id):
+783:     rows = query_db(
+784:         'SELECT p.*, v.model AS vehicle FROM payments p JOIN vehicles v ON p.vehicle_id = v.id WHERE p.customer_id = ? ORDER BY p.due_date DESC',
+785:         (customer_id,)
+786:     )
+787:     return jsonify([dict(row) for row in rows])
+788: 
+789: 
+790: @app.route('/api/telemetry')
+791: @login_required
+792: def telemetry_api():
+793:     rows = query_db('SELECT t.*, v.model AS vehicle FROM telemetry t JOIN vehicles v ON t.vehicle_id = v.id ORDER BY t.timestamp DESC')
+794:     return jsonify([dict(row) for row in rows])
+795: 
+796: 
+797: @app.route('/export/payments')
+798: @login_required
+799: def export_payments():
+800:     rows = query_db('SELECT p.id, c.name AS customer, v.model AS vehicle, p.amount, p.due_date, p.status FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id ORDER BY p.due_date DESC')
+801:     lines = ['ID,Cliente,Veículo,Valor,Vencimento,Status']
+802:     for row in rows:
+803:         escaped = [
+804:             f'"{str(row[k]).replace("\"", "\"\"")}"' if row[k] is not None else ''
+805:             for k in ['id', 'customer', 'vehicle', 'amount', 'due_date', 'status']
+806:         ]
+807:         lines.append(','..join(escaped))
+808:     csv_data = '\n'.join(lines)
+809:     return app.response_class(csv_data, mimetype='text/csv', headers={'Content-Disposition': 'attachment;filename=relatorio_financeiro.csv'})
+810: 
+811: 
+812: @app.route('/api/customers', methods=['GET', 'POST'])
+813: @login_required
+814: def customers_api():
+815:     if request.method == 'POST':
+816:         payload = request.get_json()
+817:         name = payload.get('name')
+818:         document = payload.get('document')
+819:         email = payload.get('email')
+820:         phone = payload.get('phone')
+821:         score = int(payload.get('score', 650))
+822:         db = get_db()
+823:         db.execute('INSERT INTO customers (name, document, email, phone, score) VALUES (?, ?, ?, ?, ?)',
+824:             (name, document, email, phone, score))
+825:         db.commit()
+826:         return jsonify({'status': 'ok'})
+827: 
+828:     rows = query_db('SELECT * FROM customers ORDER BY name')
+829:     return jsonify([dict(row) for row in rows])
+830: 
+831: 
+832: @app.route('/api/vehicles', methods=['GET', 'POST'])
+833: @login_required
+834: def vehicles_api():
+835:     if request.method == 'POST':
+836:         payload = request.get_json()
+837:         model = payload.get('model')
+838:         plate = payload.get('plate')
+839:         status = payload.get('status')
+840:         insurance = payload.get('insurance')
+841:         owner_id = int(payload.get('owner_id'))
+842:         db = get_db()
+843:         db.execute('INSERT INTO vehicles (model, plate, status, insurance, latitude, longitude, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+844:             (model, plate, status, insurance, -23.55, -46.63, owner_id))
+845:         db.commit()
+846:         return jsonify({'status': 'ok'})
+847: 
+848:     rows = query_db('SELECT * FROM vehicles ORDER BY model')
+849:     return jsonify([dict(row) for row in rows])
+850: 
+851: 
+852: @app.route('/api/documents', methods=['POST'])
+853: @login_required
+854: def documents_api():
+855:     owner_type = request.form.get('owner_type')
+856:     raw_owner = request.form.get('owner_id')
+857:     doc_type = request.form.get('doc_type')
+858:     file = request.files.get('file')
+859:     if not file:
+860:         return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+861: 
+862:     try:
+863:         owner_id = int(raw_owner.split(':')[-1])
+864:     except Exception:
+865:         owner_id = None
+866: 
+867:     if owner_id is None:
+868:         return jsonify({'error': 'Proprietário inválido'}), 400
+869: 
+870:     filename = secure_filename(file.filename)
+871:     destination = UPLOAD_FOLDER / filename
+872:     file.save(destination)
+873:     text = extract_text_from_file(destination)
+874:     db = get_db()
+875:     db.execute('INSERT INTO documents (owner_type, owner_id, doc_type, filename, note) VALUES (?, ?, ?, ?, ?)',
+876:         (owner_type, owner_id, doc_type, filename, f'OCR: {text[:120]}'))
+877:     db.commit()
+878:     return jsonify({'text': text})
+879: 
+880: 
+881: @app.route('/api/background-check', methods=['POST'])
+882: @login_required
+883: def background_check_api():
+884:     payload = request.get_json()
+885:     customer_id = int(payload.get('customer_id'))
+886:     result = calculate_driver_score(customer_id)
+887:     if not result:
+888:         return jsonify({'error': 'Cliente não encontrado'}), 404
+889:     return jsonify(result)
+890: 
+891: 
+892: @app.route('/uploads/<path:filename>')
+893: @login_required
+894: def uploaded_file(filename):
+895:     return send_from_directory(UPLOAD_FOLDER, filename)
+896: 
+897: 
+898: if __name__ == '__main__':
+899:     app.run(debug=True, port=5001)
+

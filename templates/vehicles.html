@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Cadastrar veículo</h2>
+        <form method="post" action="{{ url_for('vehicles') }}" id="vehicleForm">
+            <input type="hidden" name="action" id="vehicleAction" value="create" />
+            <input type="hidden" name="vehicle_id" id="vehicleId" value="" />
+            <div class="form-group">
+                <label for="brand">Marca</label>
+                <select name="brand" id="brand" required onchange="updateModelOptions()">
+                    <option value="Honda">Honda</option>
+                    <option value="Yamaha">Yamaha</option>
+                    <option value="Suzuki">Suzuki</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="model">Modelo</label>
+                <select name="model" id="model" required>
+                    <option value="">Selecione um modelo</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <div id="vehiclePreview" class="vehicle-preview" style="text-align: center; padding: 20px; background: rgba(44, 134, 255, 0.1); border-radius: 8px; margin: 10px 0;">
+                    <p style="color: var(--muted); margin: 0;">Prévia do veículo</p>
+                    <svg id="bikeIcon" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 120px; max-width: 200px;">
+                        <text x="100" y="60" text-anchor="middle" fill="var(--muted)">Selecione uma marca</text>
+                    </svg>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="plate">Placa</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" name="plate" id="plate" required style="flex: 1; text-transform: uppercase;" />
+                    <button type="button" id="clearPlate" class="button secondary" style="padding: 10px 12px;" title="Limpar">✕</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="color">Cor</label>
+                <select name="color" id="color" required>
+                    <option value="Azul">Azul</option>
+                    <option value="Branco">Branco</option>
+                    <option value="Cinza">Cinza</option>
+                    <option value="Preta">Preta</option>
+                    <option value="Vermelha">Vermelha</option>
+                    <option value="Outra">Outra</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select name="status" id="status" required>
+                    <option value="disponível">Disponível</option>
+                    <option value="alugado">Alugado</option>
+                    <option value="manutenção">Manutenção</option>
+                    <option value="vendido">Vendido</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="insurance">Seguro</label>
+                <input type="text" name="insurance" id="insurance" value="Seguro Ativo" required />
+            </div>
+            <div class="form-group">
+                <label for="owner_id">Cliente</label>
+                <select name="owner_id" id="owner_id">
+                    <option value="">Selecione</option>
+                    {% for customer in customers %}
+                        <option value="{{ customer.id }}">{{ customer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button" id="vehicleSubmit">Salvar veículo</button>
+                <button type="button" class="button secondary" id="vehicleCancel" style="display:none;">Cancelar</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Veículos cadastrados</h2>
+            <input type="search" id="vehicleSearch" placeholder="Buscar veículos..." />
+        </div>
+        <table>
+            <thead>
+                <tr><th>Imagem</th><th>Marca</th><th>Modelo</th><th>Cor</th><th>Placa</th><th>Status</th><th>Seguro</th><th>Cliente</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for vehicle in vehicles %}
+                <tr>
+                    <td style="text-align: center;">
+                        <svg viewBox="0 0 80 50" xmlns="http://www.w3.org/2000/svg" style="width: 60px; height: 40px;">
+                            {% if vehicle.brand == 'Honda' %}
+                                <circle cx="20" cy="35" r="12" fill="none" stroke="#333" stroke-width="2"/>
+                                <circle cx="60" cy="35" r="12" fill="none" stroke="#333" stroke-width="2"/>
+                                <ellipse cx="40" cy="20" rx="18" ry="12" fill="#ff6600"/>
+                                <rect x="33" y="12" width="14" height="10" fill="#333" rx="2"/>
+                            {% elif vehicle.brand == 'Yamaha' %}
+                                <circle cx="20" cy="35" r="12" fill="none" stroke="#333" stroke-width="2"/>
+                                <circle cx="60" cy="35" r="12" fill="none" stroke="#333" stroke-width="2"/>
+                                <ellipse cx="40" cy="18" rx="20" ry="13" fill="#1a1a1a"/>
+                                <path d="M 25 15 L 36 8 L 50 15 Z" fill="#1a1a1a"/>
+                            {% elif vehicle.brand == 'Suzuki' %}
+                                <circle cx="20" cy="35" r="12" fill="none" stroke="#333" stroke-width="2"/>
+                                <circle cx="60" cy="35" r="12" fill="none" stroke="#333" stroke-width="2"/>
+                                <ellipse cx="40" cy="20" rx="18" ry="12" fill="#cc0000"/>
+                                <path d="M 25 18 L 36 12 L 50 18 Z" fill="#cc0000"/>
+                            {% else %}
+                                <text x="40" y="25" text-anchor="middle" font-size="12">?</text>
+                            {% endif %}
+                        </svg>
+                    </td>
+                    <td>{{ vehicle.brand or '—' }}</td>
+                    <td>{{ vehicle.model }}</td>
+                    <td>{{ vehicle.color or '—' }}</td>
+                    <td>{{ vehicle.plate }}</td>
+                    <td>{{ vehicle.status }}</td>
+                    <td>{{ vehicle.insurance }}</td>
+                    <td>{{ vehicle.owner_name or '—' }}</td>
+                    <td>
+                        <button type="button" class="button secondary edit-vehicle" data-id="{{ vehicle.id }}" data-brand="{{ vehicle.brand or 'Honda' }}" data-model="{{ vehicle.model }}" data-color="{{ vehicle.color or 'Azul' }}" data-plate="{{ vehicle.plate }}" data-status="{{ vehicle.status }}" data-insurance="{{ vehicle.insurance }}" data-owner="{{ vehicle.owner_id }}">Editar</button>
+                        <button type="button" class="button danger delete-vehicle" data-id="{{ vehicle.id }}">Excluir</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Suporte à frota</h2>
+        </div>
+        <div class="support-panel">
+            <p>Para solicitações de suporte, entre em contato com nossa equipe especializada de pós-venda e assistência técnica.</p>
+            <ul>
+                <li><strong>WhatsApp:</strong> +55 11 99999-1234</li>
+                <li><strong>E-mail:</strong> suporte@motoexperts.com.br</li>
+                <li><strong>Horário de atendimento:</strong> Segunda a sexta, 08:00 – 18:00</li>
+            </ul>
+            <p>Use o PDV para finalizar vendas e atualizar automaticamente o estoque e o status do veículo.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Modelos de motos por marca
+    const motorcycleModels = {
+        'Honda': ['Honda CG 160', 'Honda CB 300F', 'Honda XRE 300', 'Honda NC 750X'],
+        'Yamaha': ['Yamaha Fazer 250', 'Yamaha NMax 160', 'Yamaha YZF-R3', 'Yamaha MT-07'],
+        'Suzuki': ['Suzuki GSX-R1000', 'Suzuki GSX-S1000', 'Suzuki Burgman 125', 'Suzuki V-Strom 650']
+    };
+
+    function updateModelOptions() {
+        const brand = document.getElementById('brand').value;
+        const modelSelect = document.getElementById('model');
+        const models = motorcycleModels[brand] || [];
+        
+        modelSelect.innerHTML = '<option value="">Selecione um modelo</option>';
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            modelSelect.appendChild(option);
+        });
+        
+        updateBikePreview();
+    }
+
+    function updateBikePreview() {
+        const brand = document.getElementById('brand').value;
+        const bikeIcon = document.getElementById('bikeIcon');
+        
+        let svg = '<style>.bike-body { fill: #333; } .bike-wheel { fill: none; stroke: #333; stroke-width: 2; } .bike-rim { fill: #999; }</style>';
+        
+        if (brand === 'Honda') {
+            svg += `
+                <circle cx="30" cy="70" r="18" class="bike-wheel"/>
+                <circle cx="30" cy="70" r="14" class="bike-rim"/>
+                <circle cx="140" cy="70" r="18" class="bike-wheel"/>
+                <circle cx="140" cy="70" r="14" class="bike-rim"/>
+                <ellipse cx="85" cy="40" rx="30" ry="18" fill="#ff6600"/>
+                <rect x="75" y="28" width="20" height="15" fill="#333" rx="3"/>
+                <line x1="50" y1="50" x2="40" y2="68" stroke="#333" stroke-width="2"/>
+                <line x1="120" y1="50" x2="130" y2="68" stroke="#333" stroke-width="2"/>
+                <text x="85" y="95" text-anchor="middle" font-size="10" fill="#999">Honda</text>
+            `;
+        } else if (brand === 'Yamaha') {
+            svg += `
+                <circle cx="30" cy="70" r="18" class="bike-wheel"/>
+                <circle cx="30" cy="70" r="14" class="bike-rim"/>
+                <circle cx="140" cy="70" r="18" class="bike-wheel"/>
+                <circle cx="140" cy="70" r="14" class="bike-rim"/>
+                <ellipse cx="85" cy="38" rx="35" ry="20" fill="#1a1a1a"/>
+                <path d="M 55 35 L 75 25 L 100 35 Z" fill="#1a1a1a"/>
+                <rect x="75" y="28" width="20" height="15" fill="#333" rx="3"/>
+                <line x1="48" y1="52" x2="38" y2="68" stroke="#333" stroke-width="2"/>
+                <line x1="122" y1="52" x2="132" y2="68" stroke="#333" stroke-width="2"/>
+                <text x="85" y="95" text-anchor="middle" font-size="10" fill="#999">Yamaha</text>
+            `;
+        } else if (brand === 'Suzuki') {
+            svg += `
+                <circle cx="30" cy="70" r="18" class="bike-wheel"/>
+                <circle cx="30" cy="70" r="14" class="bike-rim"/>
+                <circle cx="140" cy="70" r="18" class="bike-wheel"/>
+                <circle cx="140" cy="70" r="14" class="bike-rim"/>
+                <ellipse cx="85" cy="40" rx="32" ry="19" fill="#cc0000"/>
+                <path d="M 58 32 L 75 22 L 98 32 Z" fill="#cc0000"/>
+                <rect x="75" y="28" width="20" height="15" fill="#333" rx="3"/>
+                <line x1="50" y1="52" x2="38" y2="68" stroke="#333" stroke-width="2"/>
+                <line x1="120" y1="52" x2="132" y2="68" stroke="#333" stroke-width="2"/>
+                <text x="85" y="95" text-anchor="middle" font-size="10" fill="#999">Suzuki</text>
+            `;
+        } else {
+            svg += '<text x="100" y="50" text-anchor="middle" fill="var(--muted)" font-size="14">Selecione uma marca</text>';
+        }
+        
+        bikeIcon.innerHTML = svg;
+    }
+
+    // Initialize models on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateModelOptions();
+
+        // Existing code for form handling
+        const form = document.getElementById('vehicleForm');
+        const actionInput = document.getElementById('vehicleAction');
+        const vehicleIdInput = document.getElementById('vehicleId');
+        const submitButton = document.getElementById('vehicleSubmit');
+        const cancelButton = document.getElementById('vehicleCancel');
+        const clearPlateBtn = document.getElementById('clearPlate');
+        const plateInput = document.getElementById('plate');
+
+        function resetVehicleForm() {
+            actionInput.value = 'create';
+            vehicleIdInput.value = '';
+            form.reset();
+            submitButton.textContent = 'Salvar veículo';
+            cancelButton.style.display = 'none';
+            updateModelOptions();
+        }
+
+        // Limpar placa
+        if (clearPlateBtn) {
+            clearPlateBtn.addEventListener('click', () => {
+                plateInput.value = '';
+                plateInput.focus();
+            });
+        }
+
+        document.querySelectorAll('.edit-vehicle').forEach(button => {
+            button.addEventListener('click', () => {
+                actionInput.value = 'update';
+                vehicleIdInput.value = button.dataset.id;
+                document.getElementById('brand').value = button.dataset.brand || 'Honda';
+                updateModelOptions();
+                setTimeout(() => {
+                    document.getElementById('model').value = button.dataset.model;
+                }, 100);
+                document.getElementById('color').value = button.dataset.color || 'Azul';
+                document.getElementById('plate').value = button.dataset.plate;
+                document.getElementById('status').value = button.dataset.status;
+                document.getElementById('insurance').value = button.dataset.insurance;
+                document.getElementById('owner_id').value = button.dataset.owner;
+                submitButton.textContent = 'Atualizar veículo';
+                cancelButton.style.display = 'inline-flex';
+            });
+        });
+
+        cancelButton.addEventListener('click', resetVehicleForm);
+
+        document.getElementById('vehicleSearch').addEventListener('input', (event) => {
+            const filter = event.target.value.toLowerCase();
+            document.querySelectorAll('table tbody tr').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        });
+
+        document.querySelectorAll('.delete-vehicle').forEach(button => {
+            button.addEventListener('click', () => {
+                if (!confirm('Tem certeza que deseja excluir este veículo?')) return;
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = '{{ url_for('vehicles') }}';
+                form.innerHTML = `
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="vehicle_id" value="${button.dataset.id}" />
+                `;
+                document.body.appendChild(form);
+                form.submit();
+            });
+        });
+    });
+</script>
+{% endblock %}

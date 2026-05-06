@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Registrar multa</h2>
+        <div id="fineCustomerAlert" class="alert-banner" style="display:none;"></div>
+        <form method="post" action="{{ url_for('fines') }}">
+            <div class="form-group">
+                <label for="customer_id">Cliente</label>
+                <select name="customer_id" id="customer_id" required>
+                    <option value="">Selecione</option>
+                    {% for customer in customers %}
+                        <option value="{{ customer.id }}">{{ customer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="vehicle_id">Veículo</label>
+                <select name="vehicle_id" id="vehicle_id" required>
+                    <option value="">Selecione</option>
+                    {% for vehicle in vehicles %}
+                        <option value="{{ vehicle.id }}">{{ vehicle.model }} ({{ vehicle.plate }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="amount">Valor</label>
+                <input type="number" step="0.01" name="amount" id="amount" required />
+            </div>
+            <div class="form-group">
+                <label for="description">Descrição</label>
+                <input type="text" name="description" id="description" required />
+            </div>
+            <div class="form-group">
+                <label for="date">Data</label>
+                <input type="date" name="date" id="date" required />
+            </div>
+            <div class="form-group">
+                <label for="points">Pontos</label>
+                <input type="number" name="points" id="points" min="0" max="20" value="3" required />
+            </div>
+            <button type="submit" class="button">Salvar multa</button>
+            <p class="small-text" style="margin-top: 16px;">Para consultar registros de infrações diretamente no órgão de trânsito local, acesse <a href="https://www.detran.ce.gov.br/" target="_blank" rel="noopener noreferrer">Detran CE</a>.</p>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header"><h2>Multas registradas</h2></div>
+        <table>
+            <thead>
+                <tr><th>Cliente</th><th>Veículo</th><th>Valor</th><th>Data</th><th>Status</th><th>Pontos</th></tr>
+            </thead>
+            <tbody>
+                {% for fine in fines %}
+                    <tr>
+                        <td>{{ fine.customer }}</td>
+                        <td>{{ fine.vehicle }}</td>
+                        <td>R$ {{ fine.amount }}</td>
+                        <td>{{ fine.date }}</td>
+                        <td>{{ fine.status }}</td>
+                        <td>{{ fine.points }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const customerSelect = document.querySelector('#customer_id');
+        const alertBox = document.querySelector('#fineCustomerAlert');
+
+        function updateFineAlert() {
+            if (!customerSelect || !alertBox) return;
+            const selectedId = customerSelect.value;
+            if (!selectedId) {
+                alertBox.style.display = 'none';
+                return;
+            }
+            alertBox.textContent = 'Este cliente está recebendo uma multa. Verifique o histórico e informe sobre o procedimento de defesa.';
+            alertBox.style.display = 'block';
+        }
+
+        customerSelect?.addEventListener('change', updateFineAlert);
+    });
+</script>
+{% endblock %}

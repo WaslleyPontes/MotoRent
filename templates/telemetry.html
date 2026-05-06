@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div id="telemetryAlert" class="alert-banner" style="display:none;"></div>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Hodômetros dos veículos</h2></div>
+    <div id="speedometerContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 20px;">
+        <!-- Speedometers will be populated here -->
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Telemetria</h2></div>
+    <div class="table-controls">
+        <button type="button" class="button secondary" id="exportTelemetryBtn">Exportar telemetria</button>
+    </div>
+    <div class="table-card">
+        <table>
+            <thead>
+                <tr><th>Veículo</th><th>Localização</th><th>Velocidade</th><th>Horário</th><th>Status</th><th>Zona</th></tr>
+            </thead>
+            <tbody>
+                {% for item in telemetry %}
+                    <tr>
+                        <td>{{ item.vehicle }}</td>
+                        <td>{{ item.latitude }}, {{ item.longitude }}</td>
+                        <td>{{ item.speed }} km/h</td>
+                        <td>{{ item.timestamp }}</td>
+                        <td>{{ item.status }}</td>
+                        <td><span class="zone-indicator" data-zone="ok">✓ Fortaleza</span></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+<section class="tables-section">
+    <div class="section-header"><h2>Mapa de telemetria</h2></div>
+    <div id="telemetryMap" class="map-small"></div>
+</section>
+<section class="tables-section">
+    <div class="section-header"><h2>Velocidade dos veículos</h2></div>
+    <div class="table-card">
+        <canvas id="speedChart" height="180"></canvas>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const telemetryAlert = document.querySelector('#telemetryAlert');
+        const exportTelemetryBtn = document.querySelector('#exportTelemetryBtn');
+        const telemetryTableBody = document.querySelector('table tbody');
+        const speedometerContainer = document.getElementById('speedometerContainer');
+        const map = L.map('telemetryMap').setView([-3.73, -38.54], 11);
+        let speedChart;
+        let telemetryMarkers = [];
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const fortalezaCenter = [-3.73, -38.54];
+        const fortalezaRadius = 22000;
+        L.circle(fortalezaCenter, {
+            color: '#2563eb',
+            fillColor: 'rgba(37, 99, 235, 0.1)',
+            fillOpacity: 0.2,
+            radius: fortalezaRadius
+        }).addTo(map);
+
+        const initialTelemetry = {{ telemetry | tojson }}.map(item => ({
+            lat: item.latitude,
+            lng: item.longitude,
+            vehicle: item.vehicle,
+            status: item.status,
+            speed: item.speed,
+            timestamp: item.timestamp,
+            location: `${item.latitude}, ${item.longitude}`
+        }));
+
+        function createSpeedometer(vehicle, speed) {
+            const container = document.createElement('div');
+            container.style.cssText = 'background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: center;';
+            
+            const title = document.createElement('h4');
+            title.textContent = vehicle;
+            title.style.cssText = 'margin: 0 0 12px; font-size: 0.95rem; color: var(--muted);';
+            
+            const gauge = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            gauge.setAttribute('viewBox', '0 0 200 140');
+            gauge.setAttribute('style', 'width: 100%; height: 120px;');
+            
+            const maxSpeed = 200;
+            const angle = (speed / maxSpeed) * 220 - 110;
+            
+            gauge.innerHTML = `
+                <defs>
+                    <linearGradient id="speedGradient">
+                        <stop offset="0%" style="stop-color:#4caf50;stop-opacity:1" />
+                        <stop offset="50%" style="stop-color:#ff9800;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#f44336;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+                <!-- Background arc -->
+                <path d="M 30 120 A 70 70 0 0 1 170 120" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8"/>
+                <!-- Speed arc -->
+                <path d="M 30 120 A 70 70 0 0 1 ${100 + 70 * Math.cos((angle - 90) * Math.PI / 180)} ${120 + 70 * Math.sin((angle - 90) * Math.PI / 180)}" fill="none" stroke="url(#speedGradient)" stroke-width="8" stroke-linecap="round"/>
+                <!-- Center circle -->
+                <circle cx="100" cy="120" r="8" fill="#2c86ff"/>
+                <!-- Needle -->
+                <line x1="100" y1="120" x2="${100 + 60 * Math.cos((angle - 90) * Math.PI / 180)}" y2="${120 + 60 * Math.sin((angle - 90) * Math.PI / 180)}" stroke="#e8eef3" stroke-width="2" stroke-linecap="round"/>
+                <!-- Speed text -->
+                <text x="100" y="135" text-anchor="middle" fill="var(--text)" font-size="14" font-weight="bold">${speed} km/h</text>
+            `;
+            
+            container.appendChild(title);
+            container.appendChild(gauge);
+            return container;
+        }
+
+        function renderSpeedometers(records) {
+            if (!speedometerContainer) return;
+            speedometerContainer.innerHTML = '';
+            records.forEach(record => {
+                const speedometer = createSpeedometer(record.vehicle, Math.round(record.speed));
+                speedometerContainer.appendChild(speedometer);
+            });
+        }
+
+        function renderTelemetryTable(records) {
+            if (!telemetryTableBody) return;
+            telemetryTableBody.innerHTML = '';
+
+            records.forEach(record => {
+                const row = document.createElement('tr');
+                const distance = L.latLng(record.lat, record.lng).distanceTo(L.latLng(fortalezaCenter));
+                const isOutside = distance > fortalezaRadius;
+                
+                row.innerHTML = `
+                    <td>${record.vehicle}</td>
+                    <td>${record.location}</td>
+                    <td><strong>${record.speed} km/h</strong></td>
+                    <td>${record.timestamp}</td>
+                    <td>${record.status}</td>
+                    <td>
+                        <span class="zone-indicator" data-zone="${isOutside ? 'alert' : 'ok'}" style="padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; ${isOutside ? 'background: rgba(244, 67, 54, 0.1); color: #ff6b6b;' : 'background: rgba(76, 175, 80, 0.1); color: #4caf50;'}">
+                            ${isOutside ? '⚠ Fora de zona' : '✓ Fortaleza'}
+                        </span>
+                    </td>
+                `;
+                
+                if (isOutside) {
+                    row.classList.add('out-of-zone');
+                }
+                telemetryTableBody.appendChild(row);
+            });
+        }
+
+        function renderSpeedChart(records) {
+            const speedChartCanvas = document.getElementById('speedChart');
+            const labels = records.slice(0, 12).map(r => r.timestamp.split(' ')[1] || r.timestamp);
+            const speeds = records.slice(0, 12).map(r => Number(r.speed) || 0);
+
+            if (!speedChartCanvas) return;
+            if (speedChart) {
+                speedChart.data.labels = labels;
+                speedChart.data.datasets[0].data = speeds;
+                speedChart.update();
+                return;
+            }
+
+            speedChart = new Chart(speedChartCanvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Velocidade (km/h)',
+                        data: speeds,
+                        borderColor: '#ff8c00',
+                        backgroundColor: 'rgba(255, 140, 0, 0.18)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(0,0,0,0.05)' } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: value => `${value} km/h` } }
+                    }
+                }
+            });
+        }
+
+        function renderTelemetryMap(records) {
+            telemetryMarkers.forEach(marker => map.removeLayer(marker));
+            telemetryMarkers = [];
+            let outsideCount = 0;
+
+            records.forEach(record => {
+                const distance = L.latLng(record.lat, record.lng).distanceTo(L.latLng(fortalezaCenter));
+                const isOutside = distance > fortalezaRadius;
+                
+                const markerColor = isOutside ? 'red' : 'blue';
+                const marker = L.marker([record.lat, record.lng], {
+                    icon: L.icon({
+                        iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${markerColor}.png`,
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map).bindPopup(`
+                    <strong>${record.vehicle}</strong><br>
+                    Velocidade: ${record.speed} km/h<br>
+                    Status: ${record.status}<br>
+                    Zona: ${isOutside ? '⚠ Fora de zona' : '✓ Fortaleza'}
+                `);
+                
+                telemetryMarkers.push(marker);
+                
+                if (isOutside) {
+                    outsideCount += 1;
+                }
+            });
+
+            if (outsideCount > 0) {
+                telemetryAlert.style.display = 'block';
+                telemetryAlert.innerHTML = `
+                    <strong>⚠ Alerta de saída de zona:</strong> ${outsideCount} veículo(s) fora da região metropolitana de Fortaleza! 
+                    Distância máxima permitida: 22km do centro.
+                `;
+            } else {
+                telemetryAlert.style.display = 'none';
+            }
+        }
+
+        async function fetchTelemetryData() {
+            try {
+                const response = await fetch('/api/telemetry');
+                if (!response.ok) throw new Error('Falha ao buscar telemetria');
+                const data = await response.json();
+                const formatted = data.map(item => ({
+                    lat: item.latitude,
+                    lng: item.longitude,
+                    vehicle: item.vehicle,
+                    status: item.status,
+                    speed: item.speed,
+                    timestamp: item.timestamp,
+                    location: `${item.latitude}, ${item.longitude}`
+                }));
+                renderSpeedometers(formatted);
+                renderTelemetryTable(formatted);
+                renderSpeedChart(formatted);
+                renderTelemetryMap(formatted);
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        if (exportTelemetryBtn) {
+            exportTelemetryBtn.addEventListener('click', () => {
+                const rows = Array.from(document.querySelectorAll('table tbody tr'));
+                const csv = ['Veículo,Localização,Velocidade,Horário,Status,Zona'];
+                rows.forEach(row => {
+                    const cols = Array.from(row.querySelectorAll('td')).map(td => `"${td.textContent.trim().replace(/"/g, '""')}"`);
+                    csv.push(cols.join(','));
+                });
+                const blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'telemetria.csv';
+                link.click();
+            });
+        }
+
+        renderSpeedometers(initialTelemetry);
+        renderTelemetryTable(initialTelemetry);
+        renderSpeedChart(initialTelemetry);
+        renderTelemetryMap(initialTelemetry);
+        setInterval(fetchTelemetryData, 20000);
+    });
+</script>
+{% endblock %}

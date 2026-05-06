@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Background check</h2>
+        <form method="post" action="{{ url_for('background_check') }}">
+            <div class="form-group">
+                <label for="customer_id">Cliente (opcional)</label>
+                <select name="customer_id" id="customer_id">
+                    <option value="">Selecione ou deixe em branco</option>
+                    {% for customer in customers %}
+                        <option value="{{ customer.id }}">{{ customer.name }}</option>
+                    {% endfor %}
+                </select>
+                <small>Selecione o cliente para análise completa ou deixe em branco para buscar apenas antecedentes.</small>
+            </div>
+            <div class="form-group">
+                <label for="criminal_check">Buscar antecedentes criminais (TJCE)</label>
+                <input type="text" name="criminal_check" id="criminal_check" placeholder="Digite CPF ou nome para consulta" />
+                <small>Consulta automática no sistema TJCE. Pode ser usada sem cadastrar o cliente.</small>
+            </div>
+            <button type="submit" class="button">Verificar</button>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header"><h2>Resultado da Verificação</h2></div>
+        {% if background_result %}
+            <div class="ocr-result">
+                {% if background_result.customer_name %}
+                    <h3>📊 Análise de Risco Geral</h3>
+                    <p><strong>Cliente:</strong> {{ background_result.customer_name }}</p>
+                    <p><strong>Status:</strong> {{ background_result.status }}</p>
+                    <p><strong>Score de risco:</strong> {{ background_result.risk_score }}/1000</p>
+                    <p><strong>Recomendação:</strong> {{ background_result.recommendation }}</p>
+                {% else %}
+                    <h3>📊 Consulta de antecedentes sem cadastro</h3>
+                    <p><strong>Termo pesquisado:</strong> {{ background_result.search_term }}</p>
+                    <p><strong>Status:</strong> {{ background_result.status }}</p>
+                    <p><strong>Recomendação:</strong> {{ background_result.recommendation }}</p>
+                {% endif %}
+                
+                <h3>🚔 Antecedentes Criminais (TJCE)</h3>
+                {% if background_result.criminal_records %}
+                    <div style="background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); padding: 15px; border-radius: 8px; margin: 10px 0;">
+                        <p><strong>⚠️ ALERTA:</strong> Encontrados {{ background_result.criminal_records.count }} registros criminais</p>
+                        <ul>
+                            {% for record in background_result.criminal_records.details %}
+                                <li><strong>{{ record.type }}:</strong> {{ record.description }} ({{ record.date }})</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% else %}
+                    <div style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); padding: 15px; border-radius: 8px; margin: 10px 0;">
+                        <p><strong>✅ LIMPO:</strong> Nenhum antecedente criminal encontrado no TJCE</p>
+                    </div>
+                {% endif %}
+                
+                <h3>📝 Observações Adicionais</h3>
+                <ul>
+                    {% for note in background_result.notes %}
+                        <li>{{ note }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% else %}
+            <p>Selecione um cliente e preencha os campos para realizar a verificação completa de antecedentes.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

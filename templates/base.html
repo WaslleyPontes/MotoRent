@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7fbff" />
+    <title>MotoRent - {{ title or 'Gerenciamento' }}</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2u1w2bM7poH6mrT/ysnUCP4Rl3OvM2d9C1ZbH6k=" crossorigin="" />
+    <link rel="stylesheet" href="/static/css/style.css?v=2" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+</head>
+<body class="{{ 'light-mode' if session.get('theme') != 'dark' else '' }} {% if request.endpoint in ['login', 'register'] %}auth-page{% endif %}">
+    <div class="app-shell">
+        <aside class="sidebar" id="mobileMenu">
+            <div class="brand">MotoRent</div>
+            <nav>
+                <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}"><span class="nav-icon">🏠</span>Dashboard</a>
+                <a href="{{ url_for('customers') }}" class="{{ 'active' if request.endpoint == 'customers' else '' }}"><span class="nav-icon">👥</span>Clientes</a>
+                <a href="{{ url_for('vehicles') }}" class="{{ 'active' if request.endpoint == 'vehicles' else '' }}"><span class="nav-icon">🏍️</span>Veículos</a>
+                <a href="{{ url_for('pos') }}" class="{{ 'active' if request.endpoint == 'pos' else '' }}"><span class="nav-icon">🛒</span>PDV</a>
+                <a href="{{ url_for('finance') }}" class="{{ 'active' if request.endpoint == 'finance' else '' }}"><span class="nav-icon">💰</span>Financeiro</a>
+                <a href="{{ url_for('fines') }}" class="{{ 'active' if request.endpoint == 'fines' else '' }}"><span class="nav-icon">🚨</span>Multas</a>
+                <a href="{{ url_for('maintenance') }}" class="{{ 'active' if request.endpoint == 'maintenance' else '' }}"><span class="nav-icon">🛠️</span>Manutenção</a>
+                <a href="{{ url_for('telemetry') }}" class="{{ 'active' if request.endpoint == 'telemetry' else '' }}"><span class="nav-icon">📍</span>Telemetria</a>
+                <a href="{{ url_for('upload_document') }}" class="{{ 'active' if request.endpoint == 'upload_document' else '' }}"><span class="nav-icon">📄</span>Documentos</a>
+                <a href="{{ url_for('background_check') }}" class="{{ 'active' if request.endpoint == 'background_check' else '' }}"><span class="nav-icon">🔍</span>Background</a>
+                {% if session.get('role') == 'admin' %}
+                    <a href="{{ url_for('admin') }}" class="{{ 'active' if request.endpoint == 'admin' else '' }}"><span class="nav-icon">⚙️</span>Admin</a>
+                    <a href="{{ url_for('users') }}" class="{{ 'active' if request.endpoint == 'users' else '' }}"><span class="nav-icon">👤</span>Usuários</a>
+                {% endif %}
+                {% if session.get('username') %}
+                    <a href="{{ url_for('logout') }}"><span class="nav-icon">↩️</span>Sair</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}"><span class="nav-icon">🔑</span>Login</a>
+                {% endif %}
+            </nav>
+            <div class="sidebar-footer">
+                <small>Usuário:</small>
+                <strong>{{ session.get('username', 'Visitante') }}</strong>
+                <small>Função:</small>
+                <strong>{{ session.get('role', 'operador') }}</strong>
+            </div>
+        </aside>
+        <div class="backdrop" id="mobileBackdrop"></div>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Abrir menu">☰</button>
+                    <div>
+                        <h1>{{ title or 'MotoRent' }}</h1>
+                        <p>{{ subtitle or 'Sistema de locação de motos e vendas planejadas.' }}</p>
+                    </div>
+                </div>
+                <button id="themeToggle">Modo Claro</button>
+            </header>
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="message-container">
+                        {% for message in messages %}
+                            <div class="message">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o9N1j7f0NDbKx0TMkJ2Ush6Rdw6n5fAk7F2eTAt4HDU=" crossorigin=""></script>
+    <script src="/static/js/app.js?v=2"></script>
+    <script src="/static/js/forms.js?v=2"></script>
+    
+    <!-- Support Widget -->
+    <div id="supportWidget" class="support-widget">
+        <div class="support-toggle" id="supportToggle">
+            <span class="support-icon">💬</span>
+        </div>
+        <div class="support-menu" id="supportMenu" style="display: none;">
+            <div class="support-header">
+                <h3>Suporte Rápido</h3>
+                <button class="close-btn" id="supportClose">&times;</button>
+            </div>
+            <div class="support-options">
+                <a href="https://wa.me/5511999991234?text=Olá,%20preciso%20de%20suporte%20para%20o%20MotoRent" target="_blank" class="support-option whatsapp">
+                    <span class="support-opt-icon">📱</span>
+                    <div>
+                        <p class="support-opt-title">WhatsApp</p>
+                        <p class="support-opt-desc">Chat instantâneo</p>
+                    </div>
+                </a>
+                <a href="mailto:suporte@motorent.com.br?subject=Solicitação%20de%20Suporte" class="support-option email">
+                    <span class="support-opt-icon">📧</span>
+                    <div>
+                        <p class="support-opt-title">Email</p>
+                        <p class="support-opt-desc">Resposta em 2h</p>
+                    </div>
+                </a>
+                <button class="support-option chat" id="chatBtn">
+                    <span class="support-opt-icon">💬</span>
+                    <div>
+                        <p class="support-opt-title">Chat ao Vivo</p>
+                        <p class="support-opt-desc">Disponível 08-18h</p>
+                    </div>
+                </button>
+            </div>
+            <div class="support-footer">
+                <p>Horário: Seg-Sex 08:00-18:00</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const supportToggle = document.getElementById('supportToggle');
+        const supportMenu = document.getElementById('supportMenu');
+        const supportClose = document.getElementById('supportClose');
+        
+        supportToggle.addEventListener('click', () => {
+            supportMenu.style.display = supportMenu.style.display === 'none' ? 'block' : 'none';
+        });
+        
+        supportClose.addEventListener('click', () => {
+            supportMenu.style.display = 'none';
+        });
+        
+        document.getElementById('chatBtn').addEventListener('click', () => {
+            alert('Chat ao vivo será conectado em breve. Você será direcionado a um atendente.');
+            // Aqui você pode integrar um sistema de chat real como Zendesk, Intercom, etc.
+        });
+
+        function injectCsrfToken() {
+            const token = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (!token) return;
+            document.querySelectorAll('form[method="post"]').forEach(form => {
+                let input = form.querySelector('input[name="csrf_token"]');
+                if (!input) {
+                    input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'csrf_token';
+                    form.appendChild(input);
+                }
+                input.value = token;
+            });
+        }
+
+        injectCsrfToken();
+
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', async () => {
+                const currentTheme = document.body.classList.contains('light-mode') ? 'light' : 'dark';
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                
+                // Update UI immediately
+                document.body.classList.toggle('light-mode');
+                themeToggle.textContent = newTheme === 'dark' ? 'Modo Claro' : 'Modo Escuro';
+                
+                // Save to server
+                try {
+                    const response = await fetch('/api/theme', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+                        }
+                    });
+                    if (!response.ok) {
+                        // Revert on error
+                        document.body.classList.toggle('light-mode');
+                        themeToggle.textContent = currentTheme === 'dark' ? 'Modo Claro' : 'Modo Escuro';
+                    }
+                } catch (error) {
+                    console.error('Erro ao salvar tema:', error);
+                    // Revert on error
+                    document.body.classList.toggle('light-mode');
+                    themeToggle.textContent = currentTheme === 'dark' ? 'Modo Claro' : 'Modo Escuro';
+                }
+            });
+        }
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

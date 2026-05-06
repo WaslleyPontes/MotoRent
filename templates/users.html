@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="tables-section">
+    <div class="section-header"><h2>Usuários do sistema</h2></div>
+    <div class="content-grid">
+        <div class="form-card">
+            <h3>Criar novo usuário</h3>
+            <form method="post" action="{{ url_for('users') }}">
+                <input type="hidden" name="action" value="create" />
+                <div class="form-group">
+                    <label for="username">Usuário</label>
+                    <input type="text" id="username" name="username" required />
+                </div>
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" name="email" required />
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" name="password" required />
+                </div>
+                <div class="form-group">
+                    <label for="role">Função</label>
+                    <select id="role" name="role">
+                        <option value="operator">Operador</option>
+                        <option value="manager">Gerente</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
+                <button type="submit" class="button">Criar usuário</button>
+            </form>
+        </div>
+        <div class="table-card">
+            <div class="table-controls">
+                <div class="search-field">
+                    <label for="userSearch">Pesquisar</label>
+                    <input id="userSearch" type="text" placeholder="Nome ou e-mail" />
+                </div>
+            </div>
+            <table id="usersTable">
+                <thead>
+                    <tr><th>Usuário</th><th>E-mail</th><th>Função</th><th>Ação</th></tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.role }}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('users') }}" class="inline-form">
+                                    <input type="hidden" name="action" value="update_role" />
+                                    <input type="hidden" name="user_id" value="{{ user.id }}" />
+                                    <select name="role">
+                                        <option value="operator" {% if user.role == 'operator' %}selected{% endif %}>Operador</option>
+                                        <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>Gerente</option>
+                                        <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrador</option>
+                                    </select>
+                                    <button type="submit" class="button secondary">Salvar</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

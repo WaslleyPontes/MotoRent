@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Registrar manutenção</h2>
+        <form method="post" action="{{ url_for('maintenance') }}">
+            <div class="form-group">
+                <label for="vehicle_id">Veículo</label>
+                <select name="vehicle_id" id="vehicle_id" required>
+                    <option value="">Selecione</option>
+                    {% for vehicle in vehicles %}
+                        <option value="{{ vehicle.id }}">{{ vehicle.model }} ({{ vehicle.plate }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="last_service_date">Último serviço</label>
+                <input type="date" name="last_service_date" id="last_service_date" required />
+            </div>
+            <div class="form-group">
+                <label for="next_service_date">Próximo serviço</label>
+                <input type="date" name="next_service_date" id="next_service_date" required />
+            </div>
+            <div class="form-group">
+                <label for="predicted_cost">Custo previsto</label>
+                <input type="number" step="0.01" name="predicted_cost" id="predicted_cost" required />
+            </div>
+            <div class="form-group">
+                <label for="note">Observações</label>
+                <textarea name="note" id="note" rows="3"></textarea>
+            </div>
+            <button type="submit" class="button">Salvar manutenção</button>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header"><h2>Manutenções previstas</h2></div>
+        <table>
+            <thead>
+                <tr><th>Veículo</th><th>Última</th><th>Próxima</th><th>Status</th><th>Custo</th><th>Observações</th></tr>
+            </thead>
+            <tbody>
+                {% for item in maintenance_list %}
+                    <tr>
+                        <td>{{ item.vehicle }}</td>
+                        <td>{{ item.last_service_date }}</td>
+                        <td>{{ item.next_service_date }}</td>
+                        <td>{{ item.status }}</td>
+                        <td>R$ {{ item.predicted_cost }}</td>
+                        <td>{{ item.note }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

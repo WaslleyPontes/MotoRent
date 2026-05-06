@@ -1,0 +1,249 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Cadastrar cliente</h2>
+        <form method="post" action="{{ url_for('customers') }}" id="customerForm">
+            <input type="hidden" name="action" id="customerAction" value="create" />
+            <input type="hidden" name="customer_id" id="customerId" value="" />
+            <div class="form-group">
+                <label for="name">Nome</label>
+                <input type="text" name="name" id="name" required />
+            </div>
+            <div class="form-group">
+                <label for="document_type">Tipo de documento</label>
+                <select name="document_type" id="document_type" required>
+                    <option value="CPF">CPF</option>
+                    <option value="RG">RG</option>
+                    <option value="CNH">CNH</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="document">Documento</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" name="document" id="document" required style="flex: 1;" />
+                    <button type="button" id="clearDocument" class="button secondary" style="padding: 10px 12px;" title="Limpar">✕</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="email">E-mail</label>
+                <input type="email" name="email" id="email" required />
+            </div>
+            <div class="form-group">
+                <label for="phone">Telefone</label>
+                <input type="text" name="phone" id="phone" required />
+            </div>
+            <div class="form-group">
+                <label for="cep">CEP</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" name="cep" id="cep" placeholder="00000-000" maxlength="9" style="flex: 1;" />
+                    <button type="button" class="button" id="searchCep" style="padding: 10px 15px;">Buscar</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="street">Rua/Logradouro</label>
+                <input type="text" name="street" id="street" />
+            </div>
+            <div class="form-group">
+                <label for="number">Número</label>
+                <input type="text" name="number" id="number" />
+            </div>
+            <div class="form-group">
+                <label for="complement">Complemento</label>
+                <input type="text" name="complement" id="complement" placeholder="Apto, sala, etc." />
+            </div>
+            <div class="form-group">
+                <label for="neighborhood">Bairro</label>
+                <input type="text" name="neighborhood" id="neighborhood" />
+            </div>
+            <div class="form-group">
+                <label for="city">Cidade</label>
+                <input type="text" name="city" id="city" />
+            </div>
+            <div class="form-group">
+                <label for="state">Estado</label>
+                <input type="text" name="state" id="state" maxlength="2" style="text-transform: uppercase;" />
+            </div>
+            <div class="form-group">
+                <label for="score">Score inicial</label>
+                <input type="number" name="score" id="score" min="0" max="1000" value="650" required />
+            </div>
+            <div class="form-group">
+                <label for="internal_notes">Notas internas</label>
+                <textarea name="internal_notes" id="internal_notes" rows="3" placeholder="Observações sobre o cliente"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button" id="customerSubmit">Salvar cliente</button>
+                <button type="button" class="button secondary" id="customerCancel" style="display:none;">Cancelar</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Clientes cadastrados</h2>
+            <input type="search" id="customerSearch" placeholder="Buscar clientes..." />
+        </div>
+        <table>
+            <thead>
+                <tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Email</th><th>Telefone</th><th>CEP</th><th>Endereço</th><th>Score</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for customer in customers %}
+                <tr>
+                    <td>{{ customer.name }}</td>
+                    <td>{{ customer.document_type or 'CPF' }}</td>
+                    <td>{{ customer.document }}</td>
+                    <td>{{ customer.email }}</td>
+                    <td>{{ customer.phone }}</td>
+                    <td>{{ customer.cep or '-' }}</td>
+                    <td>{{ customer.street }}, {{ customer.number }}{% if customer.complement %} - {{ customer.complement }}{% endif %}</td>
+                    <td>{{ customer.score }}</td>
+                    <td>
+                        <a href="{{ url_for('customer_profile', customer_id=customer.id) }}" class="button tertiary">Perfil</a>
+                        <button type="button" class="button secondary edit-customer" data-id="{{ customer.id }}" data-name="{{ customer.name }}" data-document-type="{{ customer.document_type or 'CPF' }}" data-document="{{ customer.document }}" data-email="{{ customer.email }}" data-phone="{{ customer.phone }}" data-score="{{ customer.score }}" data-internal-notes="{{ customer.internal_notes or ''|e }}" data-cep="{{ customer.cep or '' }}" data-street="{{ customer.street or '' }}" data-number="{{ customer.number or '' }}" data-neighborhood="{{ customer.neighborhood or '' }}" data-city="{{ customer.city or '' }}" data-state="{{ customer.state or '' }}" data-complement="{{ customer.complement or '' }}">Editar</button>
+                        <button type="button" class="button danger delete-customer" data-id="{{ customer.id }}">Excluir</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('customerForm');
+        const actionInput = document.getElementById('customerAction');
+        const customerIdInput = document.getElementById('customerId');
+        const submitButton = document.getElementById('customerSubmit');
+        const cancelButton = document.getElementById('customerCancel');
+        const searchCepBtn = document.getElementById('searchCep');
+        const cepInput = document.getElementById('cep');
+        const clearDocumentBtn = document.getElementById('clearDocument');
+
+        function resetCustomerForm() {
+            actionInput.value = 'create';
+            customerIdInput.value = '';
+            form.reset();
+            submitButton.textContent = 'Salvar cliente';
+            cancelButton.style.display = 'none';
+        }
+
+        function formatCep(cep) {
+            const clean = cep.replace(/\D/g, '');
+            if (clean.length <= 5) return clean;
+            return clean.substring(0, 5) + '-' + clean.substring(5, 8);
+        }
+
+        function searchCep() {
+            const cep = cepInput.value.trim();
+            if (!cep) {
+                alert('Por favor, insira um CEP');
+                return;
+            }
+
+            const cepClean = cep.replace(/\D/g, '');
+            if (cepClean.length !== 8) {
+                alert('CEP deve conter 8 dígitos');
+                return;
+            }
+
+            searchCepBtn.disabled = true;
+            searchCepBtn.textContent = 'Buscando...';
+
+            fetch(`/api/address/cep/${cepClean}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('street').value = data.street;
+                        document.getElementById('neighborhood').value = data.neighborhood;
+                        document.getElementById('city').value = data.city;
+                        document.getElementById('state').value = data.state;
+                        document.getElementById('number').focus();
+                    } else {
+                        alert(data.error || 'CEP não encontrado');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro:', error);
+                    alert('Erro ao consultar CEP');
+                })
+                .finally(() => {
+                    searchCepBtn.disabled = false;
+                    searchCepBtn.textContent = 'Buscar';
+                });
+        }
+
+        searchCepBtn.addEventListener('click', searchCep);
+        cepInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchCep();
+            }
+        });
+
+        cepInput.addEventListener('input', (e) => {
+            e.target.value = formatCep(e.target.value);
+        });
+
+        // Limpar documento
+        clearDocumentBtn.addEventListener('click', () => {
+            document.getElementById('document').value = '';
+            document.getElementById('document').focus();
+        });
+
+        document.querySelectorAll('.edit-customer').forEach(button => {
+            button.addEventListener('click', () => {
+                actionInput.value = 'update';
+                customerIdInput.value = button.dataset.id;
+                document.getElementById('name').value = button.dataset.name;
+                document.getElementById('document_type').value = button.dataset.documentType || 'CPF';
+                document.getElementById('document').value = button.dataset.document;
+                document.getElementById('email').value = button.dataset.email;
+                document.getElementById('phone').value = button.dataset.phone;
+                document.getElementById('score').value = button.dataset.score;
+                document.getElementById('internal_notes').value = button.dataset.internalNotes || '';
+                document.getElementById('cep').value = button.dataset.cep || '';
+                document.getElementById('street').value = button.dataset.street || '';
+                document.getElementById('number').value = button.dataset.number || '';
+                document.getElementById('neighborhood').value = button.dataset.neighborhood || '';
+                document.getElementById('city').value = button.dataset.city || '';
+                document.getElementById('state').value = button.dataset.state || '';
+                document.getElementById('complement').value = button.dataset.complement || '';
+                submitButton.textContent = 'Atualizar cliente';
+                cancelButton.style.display = 'inline-flex';
+                document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        cancelButton.addEventListener('click', resetCustomerForm);
+
+        document.getElementById('customerSearch').addEventListener('input', (event) => {
+            const filter = event.target.value.toLowerCase();
+            document.querySelectorAll('table tbody tr').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        });
+
+        document.querySelectorAll('.delete-customer').forEach(button => {
+            button.addEventListener('click', () => {
+                if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = '{{ url_for('customers') }}';
+                form.innerHTML = `
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="customer_id" value="${button.dataset.id}" />
+                `;
+                document.body.appendChild(form);
+                form.submit();
+            });
+        });
+    });
+</script>
+{% endblock %}

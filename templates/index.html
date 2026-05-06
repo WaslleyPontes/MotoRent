@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="cards-grid">
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">👥</span><h2>Clientes</h2></div>
+        <p class="value">{{ total_clients }}</p>
+        <p class="small-text">Total de clientes cadastrados</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">🏍️</span><h2>Frota</h2></div>
+        <p class="value">{{ total_vehicles }}</p>
+        <p class="small-text">Veículos no sistema</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">📦</span><h2>Aluguéis ativos</h2></div>
+        <p class="value">{{ active_rentals }}</p>
+        <p class="small-text">Veículos atualmente em rota</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">⚠️</span><h2>Inadimplência</h2></div>
+        <p class="value">{{ overdue_payments }}</p>
+        <p class="small-text">Pagamentos atrasados</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">💰</span><h2>Receita paga</h2></div>
+        <p class="value">R$ {{ '%.2f' | format(total_income) }}</p>
+        <p class="small-text">Receita efetivada</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">📆</span><h2>Previsto</h2></div>
+        <p class="value">R$ {{ '%.2f' | format(predicted_revenue) }}</p>
+        <p class="small-text">Receita esperada próxima</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">📍</span><h2>Ocupação</h2></div>
+        <p class="value">{{ occupancy_rate }}%</p>
+        <p class="small-text">Taxa de ocupação da frota</p>
+    </article>
+    <article class="card metric-card">
+        <div class="metric-header"><span class="metric-icon">🚗</span><h2>Prontos para locar</h2></div>
+        <p class="value">{{ available_vehicles }}</p>
+        <p class="small-text">Veículos disponíveis</p>
+    </article>
+</section>
+
+<section class="dashboard-grid finance-grid">
+    <div class="panel finance-panel">
+        <div class="panel-header"><h3>Receita mensal</h3></div>
+        <canvas id="revenueChart" height="160"></canvas>
+    </div>
+    <div class="panel finance-panel">
+        <div class="panel-header"><h3>Lucro por veículo</h3></div>
+        <canvas id="profitChart" height="160"></canvas>
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Alocação da frota</h2></div>
+    <div class="table-card">
+        <table>
+            <thead>
+                <tr><th>Status</th><th>Quantidade</th></tr>
+            </thead>
+            <tbody>
+                {% for status in vehicle_status_counts %}
+                    <tr>
+                        <td>{{ status.status }}</td>
+                        <td>{{ status.count }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Clientes de maior risco</h2></div>
+    <div class="table-card">
+        <table>
+            <thead>
+                <tr><th>Cliente</th><th>Score de risco</th><th>Status</th><th>Recomendação</th></tr>
+            </thead>
+            <tbody>
+                {% for client in top_risky_customers %}
+                    <tr>
+                        <td>{{ client.name }}</td>
+                        <td>{{ client.risk }}</td>
+                        <td>{{ client.status }}</td>
+                        <td>{{ client.recommendation }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="map-section">
+    <div class="section-header"><h2>Mapa de veículos ativos</h2></div>
+    <div id="mapCanvas"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const revenueData = {{ revenue_by_month | tojson }};
+        const profitData = {{ profit_by_vehicle | tojson }};
+        const mapLocations = {{ locations | tojson }};
+
+        const revenueCtx = document.getElementById('revenueChart');
+        if (revenueCtx) {
+            new Chart(revenueCtx, {
+                type: 'line',
+                data: {
+                    labels: revenueData.map(item => item.month).reverse(),
+                    datasets: [{
+                        label: 'Receita paga',
+                        data: revenueData.map(item => item.total).reverse(),
+                        borderColor: '#4caf50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.18)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { callback: value => `R$ ${value}` } } }
+                }
+            });
+        }
+
+        const profitCtx = document.getElementById('profitChart');
+        if (profitCtx) {
+            new Chart(profitCtx, {
+                type: 'bar',
+                data: {
+                    labels: profitData.slice(0, 6).map(item => item.vehicle),
+                    datasets: [{
+                        label: 'Lucro estimado',
+                        data: profitData.slice(0, 6).map(item => item.profit),
+                        backgroundColor: 'rgba(33, 150, 243, 0.35)',
+                        borderColor: '#2196f3',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { ticks: { callback: value => `R$ ${value}` } }
+                    }
+                }
+            });
+        }
+
+        const map = L.map('mapCanvas').setView([-3.73, -38.54], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const operationCenter = [-3.73, -38.54];
+        const operationRadius = 22000;
+        L.circle(operationCenter, {
+            color: '#2563eb',
+            fillColor: 'rgba(37, 99, 235, 0.12)',
+            fillOpacity: 0.2,
+            radius: operationRadius
+        }).addTo(map);
+
+        mapLocations.forEach(vehicle => {
+            if (vehicle.lat && vehicle.lng) {
+                L.marker([vehicle.lat, vehicle.lng])
+                    .bindPopup(`<strong>${vehicle.model}</strong><br>Status: ${vehicle.status}`)
+                    .addTo(map);
+            }
+        });
+    });
+</script>
+{% endblock %}

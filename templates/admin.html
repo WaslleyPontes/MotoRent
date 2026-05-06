@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="cards-grid admin-cards">
+    <article class="card admin-card">
+        <div class="card-header"><h2>Usuários</h2></div>
+        <p class="large-value">{{ total_users }}</p>
+        <p class="small-text">Contas registradas</p>
+    </article>
+    <article class="card admin-card">
+        <div class="card-header"><h2>Clientes</h2></div>
+        <p class="large-value">{{ total_customers }}</p>
+        <p class="small-text">Cadastros ativos</p>
+    </article>
+    <article class="card admin-card">
+        <div class="card-header"><h2>Veículos</h2></div>
+        <p class="large-value">{{ total_vehicles }}</p>
+        <p class="small-text">Frota total</p>
+    </article>
+    <article class="card admin-card">
+        <div class="card-header"><h2>Pagamentos</h2></div>
+        <p class="large-value">{{ total_payments }}</p>
+        <p class="small-text">Registros financeiros</p>
+    </article>
+</section>
+
+<section class="panel-grid">
+    <div class="panel admin-panel">
+        <div class="panel-header"><h3>Distribuição de funções</h3></div>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr><th>Função</th><th>Quantidade</th></tr>
+                </thead>
+                <tbody>
+                    {% for role in role_counts %}
+                        <tr><td>{{ role.role|capitalize }}</td><td>{{ role.count }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="panel-grid">
+    <div class="panel admin-panel">
+        <div class="panel-header"><h3>Distribuição de funções</h3></div>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr><th>Função</th><th>Quantidade</th></tr>
+                </thead>
+                <tbody>
+                    {% for role in role_counts %}
+                        <tr><td>{{ role.role|capitalize }}</td><td>{{ role.count }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="dashboard-grid admin-grid">
+    <div class="panel admin-panel">
+        <div class="panel-header"><h3>Saúde administrativa</h3></div>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr><th>Métrica</th><th>Valor</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Pagamentos concluídos</td><td>{{ active_payments }}</td></tr>
+                    <tr><td>Pagamentos em atraso</td><td>{{ pending_payments }}</td></tr>
+                    <tr><td>Multas registradas</td><td>{{ total_fines }}</td></tr>
+                    <tr><td>Manutenções agendadas</td><td>{{ total_maintenance }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="tables-section">
+    <div class="section-header"><h2>Usuários recentes</h2></div>
+    <div class="table-card">
+        <table>
+            <thead>
+                <tr><th>Nome</th><th>E-mail</th><th>Função</th></tr>
+            </thead>
+            <tbody>
+                {% for user in recent_users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>{{ user.role }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

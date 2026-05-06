@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="auth-card">
+    <h2>Registrar conta</h2>
+    <form method="post" action="{{ url_for('register') }}">
+        <div class="form-group">
+            <label for="username">Nome de usuário</label>
+            <input type="text" name="username" id="username" required />
+        </div>
+        <div class="form-group">
+            <label for="email">E-mail</label>
+            <input type="email" name="email" id="email" required />
+        </div>
+        <div class="form-group">
+            <label for="password">Senha</label>
+            <input type="password" name="password" id="password" required />
+        </div>
+        <button type="submit" class="button">Registrar</button>
+    </form>
+    <p class="small-text">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
+</section>
+{% endblock %}
