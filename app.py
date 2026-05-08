@@ -44,7 +44,7 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'no-re
 app.config['PREFERRED_URL_SCHEME'] = os.environ.get('FLASK_ENV', 'development') == 'production' and 'https' or 'http'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV', 'development') == 'production'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = None
 app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get('FLASK_ENV', 'development') == 'production'
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
@@ -55,6 +55,16 @@ def ensure_column_exists(db, table, column, definition):
     cur.close()
     if column not in columns:
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+
+
+def allowed_file(filename):
+    if not filename or '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext in ALLOWED_UPLOAD_EXTENSIONS
 
 
 def send_reset_email(to_email, reset_url):
@@ -372,8 +382,12 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        if not username or not password:
+            flash('Preencha usuário e senha.')
+            return render_template('login.html', title='Login', subtitle='Acesse o painel de controle')
+
         user = query_db('SELECT * FROM users WHERE username = ?', (username,), one=True)
         if user and check_password_hash(user['password_hash'], password):
             session.clear()
@@ -389,9 +403,14 @@ def login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+
+        if not username or not email or not password:
+            flash('Preencha todos os campos.')
+            return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
+
         if query_db('SELECT id FROM users WHERE username = ?', (username,), one=True):
             flash('Nome de usuário já existe.')
             return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
@@ -404,7 +423,6 @@ def register():
         return redirect(url_for('login'))
 
     return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
-
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
@@ -475,7 +493,10 @@ def customers():
             document = request.form.get('document', '').strip()
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
-            score = int(request.form.get('score', 0) or 0)
+            try:
+                score = int(request.form.get('score', 0) or 0)
+            except (TypeError, ValueError):
+                score = 0
             internal_notes = request.form.get('internal_notes', '')
             cep = request.form.get('cep', '').strip()
             street = request.form.get('street', '').strip()
@@ -484,6 +505,10 @@ def customers():
             city = request.form.get('city', '').strip()
             state = request.form.get('state', '').strip()
             complement = request.form.get('complement', '').strip()
+
+            if not name or not document:
+                flash('Nome e documento são obrigatórios.', 'error')
+                return redirect(url_for('customers'))
             
             # Validar documento duplicado
             existing = query_db('SELECT id FROM customers WHERE document_type = ? AND document = ?', (document_type, document), one=True)
@@ -510,13 +535,19 @@ def customers():
             db.commit()
             flash('Cliente cadastrado com sucesso.')
         elif action == 'update':
-            customer_id = int(request.form.get('customer_id', 0))
+            try:
+                customer_id = int(request.form.get('customer_id', 0))
+            except (TypeError, ValueError):
+                customer_id = 0
             name = request.form.get('name', '').strip()
             document_type = request.form.get('document_type', 'CPF')
             document = request.form.get('document', '').strip()
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
-            score = int(request.form.get('score', 0) or 0)
+            try:
+                score = int(request.form.get('score', 0) or 0)
+            except (TypeError, ValueError):
+                score = 0
             internal_notes = request.form.get('internal_notes', '')
             cep = request.form.get('cep', '').strip()
             street = request.form.get('street', '').strip()
@@ -525,6 +556,10 @@ def customers():
             city = request.form.get('city', '').strip()
             state = request.form.get('state', '').strip()
             complement = request.form.get('complement', '').strip()
+
+            if not customer_id or not name or not document:
+                flash('ID, nome e documento são obrigatórios.', 'error')
+                return redirect(url_for('customers'))
             
             # Validar documento duplicado (exceto o próprio cliente)
             existing = query_db('SELECT id FROM customers WHERE document_type = ? AND document = ? AND id != ?', (document_type, document, customer_id), one=True)
@@ -551,11 +586,17 @@ def customers():
             db.commit()
             flash('Cliente atualizado com sucesso.')
         elif action == 'delete':
-            customer_id = int(request.form.get('customer_id', 0))
-            db.execute('UPDATE vehicles SET owner_id = NULL WHERE owner_id = ?', (customer_id,))
-            db.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
-            db.commit()
-            flash('Cliente excluído com sucesso.')
+            try:
+                customer_id = int(request.form.get('customer_id', 0))
+            except (TypeError, ValueError):
+                customer_id = 0
+            if customer_id:
+                db.execute('UPDATE vehicles SET owner_id = NULL WHERE owner_id = ?', (customer_id,))
+                db.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
+                db.commit()
+                flash('Cliente excluído com sucesso.')
+            else:
+                flash('Cliente inválido para exclusão.', 'error')
         return redirect(url_for('customers'))
 
     customers = query_db('SELECT * FROM customers ORDER BY name')
@@ -612,8 +653,15 @@ def vehicles():
             color = request.form.get('color', '').strip()
             status = request.form.get('status', '').strip()
             insurance = request.form.get('insurance', '').strip()
-            owner_id = int(request.form.get('owner_id', 0) or 0)
+            try:
+                owner_id = int(request.form.get('owner_id', 0) or 0)
+            except (TypeError, ValueError):
+                owner_id = 0
             
+            if not model or not brand or not plate:
+                flash('Marca, modelo e placa são obrigatórios.', 'error')
+                return redirect(url_for('vehicles'))
+
             # Validar placa duplicada
             existing = query_db('SELECT id FROM vehicles WHERE plate = ?', (plate,), one=True)
             if existing:
@@ -625,15 +673,25 @@ def vehicles():
             db.commit()
             flash('Veículo registrado com sucesso.')
         elif action == 'update':
-            vehicle_id = int(request.form.get('vehicle_id', 0))
+            try:
+                vehicle_id = int(request.form.get('vehicle_id', 0))
+            except (TypeError, ValueError):
+                vehicle_id = 0
             model = request.form.get('model', '').strip()
             brand = request.form.get('brand', '').strip()
             plate = request.form.get('plate', '').strip().upper()
             color = request.form.get('color', '').strip()
             status = request.form.get('status', '').strip()
             insurance = request.form.get('insurance', '').strip()
-            owner_id = int(request.form.get('owner_id', 0) or 0)
+            try:
+                owner_id = int(request.form.get('owner_id', 0) or 0)
+            except (TypeError, ValueError):
+                owner_id = 0
             
+            if not vehicle_id or not model or not brand or not plate:
+                flash('ID, marca, modelo e placa são obrigatórios.', 'error')
+                return redirect(url_for('vehicles'))
+
             # Validar placa duplicada (exceto o próprio veículo)
             existing = query_db('SELECT id FROM vehicles WHERE plate = ? AND id != ?', (plate, vehicle_id), one=True)
             if existing:
@@ -645,10 +703,16 @@ def vehicles():
             db.commit()
             flash('Veículo atualizado com sucesso.')
         elif action == 'delete':
-            vehicle_id = int(request.form.get('vehicle_id', 0))
-            db.execute('DELETE FROM vehicles WHERE id = ?', (vehicle_id,))
-            db.commit()
-            flash('Veículo excluído com sucesso.')
+            try:
+                vehicle_id = int(request.form.get('vehicle_id', 0))
+            except (TypeError, ValueError):
+                vehicle_id = 0
+            if vehicle_id:
+                db.execute('DELETE FROM vehicles WHERE id = ?', (vehicle_id,))
+                db.commit()
+                flash('Veículo excluído com sucesso.')
+            else:
+                flash('Veículo inválido para exclusão.', 'error')
         return redirect(url_for('vehicles'))
 
     customers = query_db('SELECT * FROM customers ORDER BY name')
@@ -743,9 +807,9 @@ def telemetry():
 def upload_document():
     ocr_result = None
     if request.method == 'POST':
-        owner_type = request.form['owner_type']
-        raw_owner = request.form['owner_id']
-        doc_type = request.form['doc_type']
+        owner_type = request.form.get('owner_type', '').strip()
+        raw_owner = request.form.get('owner_id', '')
+        doc_type = request.form.get('doc_type', '').strip()
         background_check = request.form.get('background_check', 'Não')
         file = request.files.get('file')
 
@@ -754,19 +818,28 @@ def upload_document():
         except Exception:
             owner_id = None
 
-        if file and owner_id:
-            filename = secure_filename(file.filename)
-            destination = UPLOAD_FOLDER / filename
-            file.save(destination)
-            text = extract_text_from_file(destination)
-            db = get_db()
-            db.execute('INSERT INTO documents (owner_type, owner_id, doc_type, filename, note, background_check) VALUES (?, ?, ?, ?, ?, ?)',
-                       (owner_type, owner_id, doc_type, filename, f'OCR: {text[:120]}', background_check))
-            db.commit()
-            ocr_result = {'text': text}
-            flash('Documento enviado com sucesso.')
+        if owner_type not in ('customer', 'vehicle'):
+            flash('Tipo de proprietário inválido.', 'error')
+        elif owner_id is None or owner_id <= 0:
+            flash('Selecione um proprietário válido.', 'error')
+        elif not file or not file.filename:
+            flash('Selecione um arquivo válido para upload.', 'error')
         else:
-            flash('Selecione um arquivo válido para upload.')
+            filename = secure_filename(file.filename)
+            if not allowed_file(filename):
+                flash('Tipo de arquivo não permitido. Envie imagens ou PDF.', 'error')
+            else:
+                unique_name = f"{int(time.time())}_{filename}"
+                destination = UPLOAD_FOLDER / unique_name
+                file.save(destination)
+                text = extract_text_from_file(destination)
+                uploaded_at = datetime.datetime.utcnow().isoformat()
+                db = get_db()
+                db.execute('INSERT INTO documents (owner_type, owner_id, doc_type, filename, note, background_check, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                           (owner_type, owner_id, doc_type, unique_name, f'OCR: {text[:120]}', background_check, uploaded_at))
+                db.commit()
+                ocr_result = {'text': text}
+                flash('Documento enviado com sucesso.')
 
     customers = query_db('SELECT * FROM customers ORDER BY name')
     vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
@@ -778,20 +851,20 @@ def upload_document():
 def background_check():
     background_result = None
     if request.method == 'POST':
-        customer_id_raw = request.form.get('customer_id', '')
+        customer_id_raw = request.form.get('customer_id', '').strip()
         criminal_check = request.form.get('criminal_check', '').strip()
         customer_id = int(customer_id_raw) if customer_id_raw.isdigit() else 0
-        
+
         if customer_id > 0:
             customer = query_db('SELECT * FROM customers WHERE id = ?', (customer_id,), one=True)
-            background_result = calculate_driver_score(customer_id)
-            if not background_result:
-                flash('Cliente não encontrado.')
+            if not customer:
+                flash('Cliente não encontrado.', 'error')
             else:
+                background_result = calculate_driver_score(customer_id)
                 background_result['customer_name'] = customer['name']
                 background_result['document'] = customer['document']
                 background_result['search_term'] = criminal_check or customer['document']
-                background_result['criminal_records'] = check_criminal_records(criminal_check or customer['document'])
+                background_result['criminal_records'] = check_criminal_records(background_result['search_term'])
         elif criminal_check:
             criminal_records = check_criminal_records(criminal_check)
             background_result = {
@@ -805,7 +878,7 @@ def background_check():
                 'criminal_records': criminal_records
             }
         else:
-            flash('Selecione um cliente ou informe CPF/nome para consulta.')
+            flash('Selecione um cliente ou informe CPF/nome para consulta.', 'error')
     
     customers = query_db('SELECT * FROM customers ORDER BY name')
     return render_template('background_check.html', title='Background Check', subtitle='Avaliação de risco do condutor', customers=customers, background_result=background_result)
@@ -1055,12 +1128,17 @@ def export_payments():
 @login_required
 def customers_api():
     if request.method == 'POST':
-        payload = request.get_json()
-        name = payload.get('name')
-        document = payload.get('document')
-        email = payload.get('email')
-        phone = payload.get('phone')
-        score = int(payload.get('score', 650))
+        payload = request.get_json(silent=True) or {}
+        name = (payload.get('name') or '').strip()
+        document = (payload.get('document') or '').strip()
+        email = (payload.get('email') or '').strip()
+        phone = (payload.get('phone') or '').strip()
+        if not name or not document:
+            return jsonify({'error': 'Nome e documento são obrigatórios.'}), 400
+        try:
+            score = int(payload.get('score', 650) or 650)
+        except (TypeError, ValueError):
+            score = 650
         db = get_db()
         db.execute('INSERT INTO customers (name, document, email, phone, score) VALUES (?, ?, ?, ?, ?)',
                    (name, document, email, phone, score))
@@ -1075,15 +1153,20 @@ def customers_api():
 @login_required
 def vehicles_api():
     if request.method == 'POST':
-        payload = request.get_json()
-        model = payload.get('model')
-        plate = payload.get('plate')
+        payload = request.get_json(silent=True) or {}
+        model = (payload.get('model') or '').strip()
+        plate = (payload.get('plate') or '').strip()
         status = payload.get('status')
         insurance = payload.get('insurance')
-        owner_id = int(payload.get('owner_id'))
+        try:
+            owner_id = int(payload.get('owner_id') or 0)
+        except (TypeError, ValueError):
+            owner_id = 0
+        if not model or not plate:
+            return jsonify({'error': 'Modelo e placa são obrigatórios.'}), 400
         db = get_db()
         db.execute('INSERT INTO vehicles (model, plate, status, insurance, latitude, longitude, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                   (model, plate, status, insurance, -23.55, -46.63, owner_id))
+                   (model, plate, status, insurance, -23.55, -46.63, owner_id if owner_id > 0 else None))
         db.commit()
         return jsonify({'status': 'ok'})
 
@@ -1106,16 +1189,23 @@ def documents_api():
     except Exception:
         owner_id = None
 
-    if owner_id is None:
+    if owner_type not in ('customer', 'vehicle'):
+        return jsonify({'error': 'Tipo de proprietário inválido'}), 400
+
+    if owner_id is None or owner_id <= 0:
         return jsonify({'error': 'Proprietário inválido'}), 400
 
     filename = secure_filename(file.filename)
-    destination = UPLOAD_FOLDER / filename
+    if not filename or not allowed_file(filename):
+        return jsonify({'error': 'Tipo de arquivo inválido'}), 400
+
+    unique_name = f"{int(time.time())}_{filename}"
+    destination = UPLOAD_FOLDER / unique_name
     file.save(destination)
     text = extract_text_from_file(destination)
     db = get_db()
     db.execute('INSERT INTO documents (owner_type, owner_id, doc_type, filename, note) VALUES (?, ?, ?, ?, ?)',
-               (owner_type, owner_id, doc_type, filename, f'OCR: {text[:120]}'))
+               (owner_type, owner_id, doc_type, unique_name, f'OCR: {text[:120]}'))
     db.commit()
     return jsonify({'text': text})
 
@@ -1123,8 +1213,11 @@ def documents_api():
 @app.route('/api/background-check', methods=['POST'])
 @login_required
 def background_check_api():
-    payload = request.get_json()
-    customer_id = int(payload.get('customer_id'))
+    payload = request.get_json(silent=True) or {}
+    try:
+        customer_id = int(payload.get('customer_id', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Cliente inválido'}), 400
     result = calculate_driver_score(customer_id)
     if not result:
         return jsonify({'error': 'Cliente não encontrado'}), 404
@@ -1134,7 +1227,7 @@ def background_check_api():
 @app.route('/api/theme', methods=['POST'])
 @login_required
 def theme_api():
-    payload = request.get_json()
+    payload = request.get_json(silent=True) or {}
     theme = payload.get('theme', 'light')
     if theme in ['light', 'dark']:
         session['theme'] = theme

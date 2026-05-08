@@ -282,12 +282,14 @@
         document.querySelectorAll('.delete-vehicle').forEach(button => {
             button.addEventListener('click', () => {
                 if (!confirm('Tem certeza que deseja excluir este veículo?')) return;
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const form = document.createElement('form');
                 form.method = 'post';
                 form.action = '{{ url_for('vehicles') }}';
                 form.innerHTML = `
                     <input type="hidden" name="action" value="delete" />
                     <input type="hidden" name="vehicle_id" value="${button.dataset.id}" />
+                    ${csrfToken ? `<input type="hidden" name="csrf_token" value="${csrfToken}" />` : ''}
                 `;
                 document.body.appendChild(form);
                 form.submit();

@@ -59,16 +59,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const menuToggle = document.querySelector('#menuToggle');
     const mobileBackdrop = document.querySelector('#mobileBackdrop');
 
-    if (themeToggle) {
-        const isLight = document.body.classList.contains('light-mode');
-        themeToggle.textContent = isLight ? 'Modo Escuro' : 'Modo Claro';
-        themeToggle.addEventListener('click', () => {
-            document.body.classList.toggle('light-mode');
-            const isLightAfter = document.body.classList.contains('light-mode');
-            themeToggle.textContent = isLightAfter ? 'Modo Escuro' : 'Modo Claro';
-        });
-    }
-
     if (menuToggle && mobileBackdrop) {
         menuToggle.addEventListener('click', () => {
             document.body.classList.toggle('sidebar-open');

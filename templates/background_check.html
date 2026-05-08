@@ -5,6 +5,7 @@
     <section class="form-card">
         <h2>Background check</h2>
         <form method="post" action="{{ url_for('background_check') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <div class="form-group">
                 <label for="customer_id">Cliente (opcional)</label>
                 <select name="customer_id" id="customer_id">

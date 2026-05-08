@@ -5,6 +5,7 @@
     <section class="form-card">
         <h2>Upload de documento</h2>
         <form method="post" action="{{ url_for('upload_document') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <div class="form-group">
                 <label for="owner_type">Tipo de proprietário</label>
                 <select name="owner_type" id="owner_type" required>

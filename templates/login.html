@@ -11,6 +11,7 @@
     </div>
     <h2>Entrar</h2>
     <form method="post" action="{{ url_for('login') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="form-group">
             <label for="username">Usuário</label>
             <input type="text" name="username" id="username" required />

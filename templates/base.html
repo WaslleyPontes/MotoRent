@@ -12,6 +12,18 @@
     <meta name="csrf-token" content="{{ csrf_token }}" />
 </head>
 <body class="{{ 'light-mode' if session.get('theme') != 'dark' else '' }} {% if request.endpoint in ['login', 'register'] %}auth-page{% endif %}">
+    <script>
+        try {
+            const savedTheme = window.localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                document.body.classList.add('light-mode');
+            } else if (savedTheme === 'dark') {
+                document.body.classList.remove('light-mode');
+            }
+        } catch (e) {
+            console.warn('Não foi possível aplicar o tema salvo:', e);
+        }
+    </script>
     <div class="app-shell">
         <aside class="sidebar" id="mobileMenu">
             <div class="brand">MotoRent</div>
@@ -152,34 +164,47 @@
 
         // Theme toggle functionality
         const themeToggle = document.getElementById('themeToggle');
+
+        const getSavedTheme = () => window.localStorage.getItem('theme');
+        const saveTheme = theme => window.localStorage.setItem('theme', theme);
+
+        const applyTheme = theme => {
+            if (theme === 'light') {
+                document.body.classList.add('light-mode');
+                themeToggle.textContent = 'Modo Escuro';
+            } else {
+                document.body.classList.remove('light-mode');
+                themeToggle.textContent = 'Modo Claro';
+            }
+        };
+
         if (themeToggle) {
+            const savedTheme = getSavedTheme();
+            const initialTheme = savedTheme || (document.body.classList.contains('light-mode') ? 'light' : 'dark');
+            applyTheme(initialTheme);
+
             themeToggle.addEventListener('click', async () => {
                 const currentTheme = document.body.classList.contains('light-mode') ? 'light' : 'dark';
                 const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-                
-                // Update UI immediately
-                document.body.classList.toggle('light-mode');
-                themeToggle.textContent = newTheme === 'dark' ? 'Modo Claro' : 'Modo Escuro';
-                
-                // Save to server
+
+                applyTheme(newTheme);
+                saveTheme(newTheme);
+
+                // Optionally save to server to keep session theme in sync
                 try {
                     const response = await fetch('/api/theme', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
-                        }
+                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({ theme: newTheme })
                     });
                     if (!response.ok) {
-                        // Revert on error
-                        document.body.classList.toggle('light-mode');
-                        themeToggle.textContent = currentTheme === 'dark' ? 'Modo Claro' : 'Modo Escuro';
+                        console.warn('Não foi possível salvar o tema no servidor.');
                     }
                 } catch (error) {
-                    console.error('Erro ao salvar tema:', error);
-                    // Revert on error
-                    document.body.classList.toggle('light-mode');
-                    themeToggle.textContent = currentTheme === 'dark' ? 'Modo Claro' : 'Modo Escuro';
+                    console.warn('Erro ao salvar tema no servidor:', error);
                 }
             });
         }
