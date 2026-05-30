@@ -35,6 +35,10 @@
                 <input type="text" name="phone" id="phone" required />
             </div>
             <div class="form-group">
+                <label for="phone2">Telefone 2</label>
+                <input type="text" name="phone2" id="phone2" />
+            </div>
+            <div class="form-group">
                 <label for="cep">CEP</label>
                 <div style="display: flex; gap: 10px;">
                     <input type="text" name="cep" id="cep" placeholder="00000-000" maxlength="9" style="flex: 1;" />
@@ -87,7 +91,7 @@
         </div>
         <table>
             <thead>
-                <tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Email</th><th>Telefone</th><th>CEP</th><th>Endereço</th><th>Score</th><th>Ações</th></tr>
+                <tr><th>Nome</th><th>Tipo</th><th>Documento</th><th>Email</th><th>Telefone</th><th>Telefone 2</th><th>CEP</th><th>Endereço</th><th>Score</th><th>Ações</th></tr>
             </thead>
             <tbody>
                 {% for customer in customers %}
@@ -103,12 +107,13 @@
                     </td>
                     <td>{{ customer.email }}</td>
                     <td>{{ customer.phone }}</td>
+                    <td>{{ customer.phone2 or '-' }}</td>
                     <td>{{ customer.cep or '-' }}</td>
                     <td>{{ customer.street }}, {{ customer.number }}{% if customer.complement %} - {{ customer.complement }}{% endif %}</td>
                     <td>{{ customer.score }}</td>
                     <td>
                         <a href="{{ url_for('customer_profile', customer_id=customer.id) }}" class="button tertiary">Perfil</a>
-                        <button type="button" class="button secondary edit-customer" data-id="{{ customer.id }}" data-name="{{ customer.name }}" data-document-type="{{ customer.document_type or 'CPF' }}" data-document="{{ customer.document }}" data-email="{{ customer.email }}" data-phone="{{ customer.phone }}" data-score="{{ customer.score }}" data-internal-notes="{{ customer.internal_notes or ''|e }}" data-cep="{{ customer.cep or '' }}" data-street="{{ customer.street or '' }}" data-number="{{ customer.number or '' }}" data-neighborhood="{{ customer.neighborhood or '' }}" data-city="{{ customer.city or '' }}" data-state="{{ customer.state or '' }}" data-complement="{{ customer.complement or '' }}">Editar</button>
+                        <button type="button" class="button secondary edit-customer" data-id="{{ customer.id }}" data-name="{{ customer.name }}" data-document-type="{{ customer.document_type or 'CPF' }}" data-document="{{ customer.document }}" data-email="{{ customer.email }}" data-phone="{{ customer.phone }}" data-phone2="{{ customer.phone2 or '' }}" data-score="{{ customer.score }}" data-internal-notes="{{ customer.internal_notes or ''|e }}" data-cep="{{ customer.cep or '' }}" data-street="{{ customer.street or '' }}" data-number="{{ customer.number or '' }}" data-neighborhood="{{ customer.neighborhood or '' }}" data-city="{{ customer.city or '' }}" data-state="{{ customer.state or '' }}" data-complement="{{ customer.complement or '' }}">Editar</button>
                         <button type="button" class="button danger delete-customer" data-id="{{ customer.id }}">Excluir</button>
                     </td>
                 </tr>
@@ -227,6 +232,7 @@
                 document.getElementById('document').value = button.dataset.document;
                 document.getElementById('email').value = button.dataset.email;
                 document.getElementById('phone').value = button.dataset.phone;
+                document.getElementById('phone2').value = button.dataset.phone2 || '';
                 document.getElementById('score').value = button.dataset.score;
                 document.getElementById('internal_notes').value = button.dataset.internalNotes || '';
                 document.getElementById('cep').value = button.dataset.cep || '';
@@ -258,7 +264,7 @@
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const form = document.createElement('form');
                 form.method = 'post';
-                form.action = '{{ url_for('customers') }}';
+                form.action = "{{ url_for('customers') }}";
                 form.innerHTML = `
                     <input type="hidden" name="action" value="delete" />
                     <input type="hidden" name="customer_id" value="${button.dataset.id}" />

@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const form = document.querySelector('form[action="{{ url_for('vehicle_inspection') }}"]');
+    const form = document.querySelector("form[action='{{ url_for('vehicle_inspection') }}']");
     if (!form) return;
     form.addEventListener('submit', (e) => {
         // coletar itens verificados e anexar às observações

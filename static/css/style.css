@@ -357,7 +357,7 @@ body.sidebar-open .backdrop {
     margin: 0;
     font-size: 1.6rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text);
 }
 
 /* Centered variant for specific metric cards (e.g., Receita paga) */
@@ -398,7 +398,28 @@ body.sidebar-open .backdrop {
     margin: 0;
     font-size: 2.4rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text);
+}
+
+/* Dark mode: force the centered revenue card to show zero (visual only) */
+body:not(.light-mode) .metric-card.centered .value {
+    color: transparent;
+    position: relative;
+}
+body:not(.light-mode) .metric-card.centered .value::after {
+    content: "R$ 0.00";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+/* Light mode: ensure values have good contrast */
+.light-mode .metric-card .value {
+    color: var(--text);
 }
 
 .small-text {

@@ -115,10 +115,11 @@
         }
         
         try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('[name="csrf_token"]')?.value || '';
             const response = await fetch('/api/admin/reset-health', {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-Token': document.querySelector('[name="csrf_token"]')?.value || ''
+                    'X-CSRF-Token': csrfToken
                 }
             });
             
@@ -146,10 +147,11 @@
             }
             
             try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('[name="csrf_token"]')?.value || '';
                 const response = await fetch(`/api/users/${userId}/delete`, {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-Token': document.querySelector('[name="csrf_token"]')?.value || ''
+                        'X-CSRF-Token': csrfToken
                     }
                 });
                 

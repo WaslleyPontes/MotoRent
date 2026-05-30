@@ -148,9 +148,9 @@
 <script>
     // Modelos de motos por marca (atualizados)
     const motorcycleModels = {
-        'Honda': ['Honda Start 160', 'Honda Fan 160', 'Bros 160'],
-        'Yamaha': ['Factor', 'Fazer 125'],
-        'Haojue': ['NK']
+        'Honda': ['Honda Start 160', 'Honda Fan 160', 'Bros 160 CBS'],
+        'Yamaha': ['Factor', 'Fazer 125', 'Yamaha Crosser Z ABS'],
+        'Haojue': ['NK 160']
     };
 
     function updateModelOptions() {
@@ -285,7 +285,7 @@
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const form = document.createElement('form');
                 form.method = 'post';
-                form.action = '{{ url_for('vehicles') }}';
+                form.action = "{{ url_for('vehicles') }}";
                 form.innerHTML = `
                     <input type="hidden" name="action" value="delete" />
                     <input type="hidden" name="vehicle_id" value="${button.dataset.id}" />

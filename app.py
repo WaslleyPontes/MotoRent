@@ -24,8 +24,10 @@ try:
     from PIL import Image
     import pytesseract
     OCR_AVAILABLE = True
-except Exception:
+except ImportError:
     OCR_AVAILABLE = False
+    import warnings
+    warnings.warn("PIL/pytesseract não instalados. OCR será desabilitado.")
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / 'database.db'
@@ -46,7 +48,7 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'no-re
 app.config['PREFERRED_URL_SCHEME'] = os.environ.get('FLASK_ENV', 'development') == 'production' and 'https' or 'http'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV', 'development') == 'production'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = None
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict' if os.environ.get('FLASK_ENV', 'development') == 'production' else 'Lax'
 app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get('FLASK_ENV', 'development') == 'production'
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
@@ -95,7 +97,13 @@ def send_reset_email(to_email, reset_url):
                     smtp.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
                 smtp.send_message(message)
         return True
-    except Exception:
+    except smtplib.SMTPException as e:
+        import warnings
+        warnings.warn(f"Erro ao enviar email: {str(e)}")
+        return False
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Erro inesperado ao enviar email: {str(e)}")
         return False
 
 
@@ -103,6 +111,7 @@ def ensure_schema_migrations(db):
     ensure_column_exists(db, 'customers', 'document_type', "TEXT DEFAULT 'CPF'")
     ensure_column_exists(db, 'customers', 'internal_notes', "TEXT DEFAULT ''")
     ensure_column_exists(db, 'customers', 'cep', 'TEXT')
+    ensure_column_exists(db, 'customers', 'phone2', 'TEXT')
     ensure_column_exists(db, 'customers', 'street', 'TEXT')
     ensure_column_exists(db, 'customers', 'number', 'TEXT')
     ensure_column_exists(db, 'customers', 'neighborhood', 'TEXT')
@@ -186,10 +195,29 @@ def inject_csrf_token():
 
 @app.before_request
 def enforce_https_and_csrf():
-    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
-        token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
+    if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+        # Accept CSRF token from common locations: form, headers, JSON body or query param
+        token = None
+        # form data
+        try:
+            token = request.form.get('csrf_token')
+        except Exception:
+            token = None
+        # headers (several common header names)
+        if not token:
+            token = request.headers.get('X-CSRF-Token') or request.headers.get('X-CSRFToken') or request.headers.get('X-CSRF')
+        # json body
+        if not token and request.is_json:
+            try:
+                token = (request.get_json(silent=True) or {}).get('csrf_token')
+            except Exception:
+                token = None
+        # query params (fallback for API calls)
+        if not token:
+            token = request.args.get('csrf_token')
+
         if not validate_csrf_token(token):
-            abort(400, 'CSRF_token inválido ou ausente.')
+            abort(400, 'CSRF token inválido ou ausente.')
 
     sync_overdue_payments()
 
@@ -322,8 +350,10 @@ def extract_text_from_file(path):
         try:
             image = Image.open(path)
             return pytesseract.image_to_string(image, lang='por')
-        except Exception:
-            return 'OCR falhou ao processar o arquivo. Verifique a instalação do Tesseract ou envie outro arquivo.'
+        except FileNotFoundError:
+            return 'OCR falhou: arquivo não encontrado. Verifique a instalação do Tesseract ou envie outro arquivo.'
+        except Exception as e:
+            return f'OCR falhou ao processar o arquivo: {str(e)}'
 
     return 'OCR não disponível neste ambiente. Arquivo salvo com sucesso.'
 
@@ -413,6 +443,16 @@ def login():
     return render_template('login.html', title='Login', subtitle='Acesse o painel de controle')
 
 
+def validate_password_strength(password):
+    if len(password) < 8:
+        return False, "Senha deve ter no mínimo 8 caracteres."
+    if not any(c.isdigit() for c in password):
+        return False, "Senha deve conter pelo menos 1 número."
+    if not any(c.isupper() for c in password):
+        return False, "Senha deve conter pelo menos 1 letra maiúscula."
+    return True, ""
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -422,6 +462,11 @@ def register():
 
         if not username or not email or not password:
             flash('Preencha todos os campos.')
+            return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
+        
+        is_valid, msg = validate_password_strength(password)
+        if not is_valid:
+            flash(msg)
             return render_template('register.html', title='Registrar', subtitle='Crie sua conta')
 
         if query_db('SELECT id FROM users WHERE username = ?', (username,), one=True):
@@ -475,6 +520,11 @@ def reset_password(token):
         if password != confirm_password:
             flash('As senhas não coincidem. Tente novamente.')
             return render_template('reset_password.html', title='Redefinir senha', subtitle='Digite a nova senha')
+        
+        is_valid, msg = validate_password_strength(password)
+        if not is_valid:
+            flash(msg)
+            return render_template('reset_password.html', title='Redefinir senha', subtitle='Digite a nova senha')
 
         password_hash = generate_password_hash(password)
         db = get_db()
@@ -506,6 +556,7 @@ def customers():
             document = request.form.get('document', '').strip()
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
+            phone2 = request.form.get('phone2', '').strip()
             try:
                 score = int(request.form.get('score', 0) or 0)
             except (TypeError, ValueError):
@@ -536,15 +587,21 @@ def customers():
                     flash('Este email já foi cadastrado para outro cliente!', 'error')
                     return redirect(url_for('customers'))
             
-            # Validar telefone duplicado
+            # Validar telefone duplicado (telefone 1)
             if phone:
                 existing = query_db('SELECT id FROM customers WHERE phone = ?', (phone,), one=True)
                 if existing:
                     flash('Este telefone já foi cadastrado para outro cliente!', 'error')
                     return redirect(url_for('customers'))
+            # Validar telefone duplicado (telefone 2)
+            if phone2:
+                existing = query_db('SELECT id FROM customers WHERE phone2 = ?', (phone2,), one=True)
+                if existing:
+                    flash('Este telefone 2 já foi cadastrado para outro cliente!', 'error')
+                    return redirect(url_for('customers'))
             
-            db.execute('INSERT INTO customers (name, document_type, document, email, phone, score, internal_notes, cep, street, number, neighborhood, city, state, complement) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                       (name, document_type, document, email, phone, score, internal_notes, cep, street, number, neighborhood, city, state, complement))
+            db.execute('INSERT INTO customers (name, document_type, document, email, phone, phone2, score, internal_notes, cep, street, number, neighborhood, city, state, complement) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                       (name, document_type, document, email, phone, phone2, score, internal_notes, cep, street, number, neighborhood, city, state, complement))
             db.commit()
             flash('Cliente cadastrado com sucesso.')
         elif action == 'update':
@@ -557,6 +614,7 @@ def customers():
             document = request.form.get('document', '').strip()
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
+            phone2 = request.form.get('phone2', '').strip()
             try:
                 score = int(request.form.get('score', 0) or 0)
             except (TypeError, ValueError):
@@ -587,15 +645,21 @@ def customers():
                     flash('Este email já foi cadastrado para outro cliente!', 'error')
                     return redirect(url_for('customers'))
             
-            # Validar telefone duplicado (exceto o próprio cliente)
+            # Validar telefone duplicado (exceto o próprio cliente) - telefone 1
             if phone:
                 existing = query_db('SELECT id FROM customers WHERE phone = ? AND id != ?', (phone, customer_id), one=True)
                 if existing:
                     flash('Este telefone já foi cadastrado para outro cliente!', 'error')
                     return redirect(url_for('customers'))
+            # Validar telefone duplicado (exceto o próprio cliente) - telefone 2
+            if phone2:
+                existing = query_db('SELECT id FROM customers WHERE phone2 = ? AND id != ?', (phone2, customer_id), one=True)
+                if existing:
+                    flash('Este telefone 2 já foi cadastrado para outro cliente!', 'error')
+                    return redirect(url_for('customers'))
             
-            db.execute('UPDATE customers SET name = ?, document_type = ?, document = ?, email = ?, phone = ?, score = ?, internal_notes = ?, cep = ?, street = ?, number = ?, neighborhood = ?, city = ?, state = ?, complement = ? WHERE id = ?',
-                       (name, document_type, document, email, phone, score, internal_notes, cep, street, number, neighborhood, city, state, complement, customer_id))
+            db.execute('UPDATE customers SET name = ?, document_type = ?, document = ?, email = ?, phone = ?, phone2 = ?, score = ?, internal_notes = ?, cep = ?, street = ?, number = ?, neighborhood = ?, city = ?, state = ?, complement = ? WHERE id = ?',
+                       (name, document_type, document, email, phone, phone2, score, internal_notes, cep, street, number, neighborhood, city, state, complement, customer_id))
             db.commit()
             flash('Cliente atualizado com sucesso.')
         elif action == 'delete':
@@ -964,8 +1028,8 @@ def upload_document():
         file = request.files.get('file')
 
         try:
-            owner_id = int(raw_owner.split(':')[-1])
-        except Exception:
+            owner_id = int(raw_owner.split(':')[-1]) if ':' in str(raw_owner) else int(raw_owner)
+        except (ValueError, IndexError, TypeError, AttributeError):
             owner_id = None
 
         if owner_type not in ('customer', 'vehicle'):
@@ -1463,6 +1527,13 @@ def customers_api():
         phone = (payload.get('phone') or '').strip()
         if not name or not document:
             return jsonify({'error': 'Nome e documento são obrigatórios.'}), 400
+        
+        if email and query_db('SELECT id FROM customers WHERE email = ?', (email,), one=True):
+            return jsonify({'error': 'Email já está registrado.'}), 400
+        
+        if phone and query_db('SELECT id FROM customers WHERE phone = ?', (phone,), one=True):
+            return jsonify({'error': 'Telefone já está registrado.'}), 400
+        
         try:
             score = int(payload.get('score', 650) or 650)
         except (TypeError, ValueError):
