@@ -4,7 +4,7 @@
 <section class="cards-grid finance-cards">
     <article class="card finance-card">
         <div class="card-header"><h2>Receita total</h2></div>
-        <p class="large-value">R$ {{ '%.2f' | format(total_income) }}</p>
+        <p class="large-value">R$ 0.00</p>
         <p class="small-text">Total de ganhos efetivados</p>
     </article>
     <article class="card finance-card">
@@ -14,32 +14,32 @@
     </article>
     <article class="card finance-card">
         <div class="card-header"><h2>Bens estimados</h2></div>
-        <p class="large-value">R$ {{ '%.2f' | format(assets_value) }}</p>
+        <p class="large-value">R$ 0.00</p>
         <p class="small-text">Valor estimado da frota</p>
     </article>
     <article class="card finance-card">
         <div class="card-header"><h2>Passivos</h2></div>
-        <p class="large-value">R$ {{ '%.2f' | format(liabilities) }}</p>
+        <p class="large-value">R$ 0.00</p>
         <p class="small-text">Dívidas e pendências</p>
     </article>
     <article class="card finance-card">
         <div class="card-header"><h2>Em atraso</h2></div>
-        <p class="large-value">R$ {{ '%.2f' | format(overdue_amount) }}</p>
+        <p class="large-value">R$ 0.00</p>
         <p class="small-text">Faturas pendentes</p>
     </article>
     <article class="card finance-card">
         <div class="card-header"><h2>Devedores</h2></div>
-        <p class="large-value">{{ overdue_debtors }}</p>
+        <p class="large-value">0</p>
         <p class="small-text">Clientes com pagamento atrasado</p>
     </article>
     <article class="card finance-card">
         <div class="card-header"><h2>Multas pendentes</h2></div>
-        <p class="large-value">R$ {{ '%.2f' | format(pending_fine_total) }}</p>
+        <p class="large-value">R$ 0.00</p>
         <p class="small-text">Aguardando resolução</p>
     </article>
     <article class="card finance-card">
         <div class="card-header"><h2>Faturamento mensal</h2></div>
-        <p class="large-value">R$ {{ '%.2f' | format(total_income) }}</p>
+        <p class="large-value">R$ 0.00</p>
         <p class="small-text">Indicador de performance</p>
     </article>
 </section>
@@ -57,12 +57,7 @@
                     <tr><th>Método</th><th>Contagem</th></tr>
                 </thead>
                 <tbody>
-                    {% for method in payment_method_counts %}
-                        <tr>
-                            <td>{{ method.payment_method }}</td>
-                            <td>{{ method.count }}</td>
-                        </tr>
-                    {% endfor %}
+                    <!-- métodos de pagamento zerados -->
                 </tbody>
             </table>
         </div>
@@ -72,6 +67,11 @@
 <div class="content-grid">
     <section class="form-card">
         <h2>Registrar pagamento</h2>
+        {% if session.get('role') != 'admin' %}
+        <p>Usuários comuns podem registrar pagamentos. Alterações de status ou valor são restritas aos administradores.</p>
+        {% else %}
+        <p>Administradores podem registrar pagamentos e também corrigir valores/status na seção abaixo.</p>
+        {% endif %}
         <form method="post" action="{{ url_for('finance') }}">
             <input type="hidden" name="action" value="create_payment" />
             <div class="form-group">
@@ -94,7 +94,7 @@
             </div>
             <div class="form-group">
                 <label for="amount">Valor</label>
-                <input type="number" step="0.01" name="amount" id="amount" required />
+                <input type="number" step="0.01" name="amount" id="amount" value="0.00" required />
             </div>
             <div class="form-group">
                 <label for="due_date">Data de vencimento</label>
@@ -109,6 +109,7 @@
                     <option value="Pix">Pix</option>
                 </select>
             </div>
+            {% if session.get('role') == 'admin' %}
             <div class="form-group">
                 <label for="status">Status</label>
                 <select name="status" id="status" required>
@@ -117,26 +118,84 @@
                     <option value="atrasado">Atrasado</option>
                 </select>
             </div>
+            {% else %}
+            <input type="hidden" name="status" value="pendente" />
+            {% endif %}
             <button type="submit" class="button">Registrar pagamento</button>
+        </form>
+    </section>
+
+    {% if session.get('role') == 'admin' %}
+    <section class="form-card">
+        <h2>Correção de pagamento (admin)</h2>
+        <p>Registre o motivo da alteração para criar um histórico de auditoria.</p>
+        <form method="post" action="{{ url_for('finance') }}">
+            <input type="hidden" name="action" value="correct_payment" />
+            <div class="form-group">
+                <label for="payment_id">Pagamento</label>
+                <select name="payment_id" id="payment_id" required>
+                    <option value="">Selecione um pagamento</option>
+                    {% for payment in correction_payments %}
+                        <option value="{{ payment.id }}">{{ payment.customer }} · {{ payment.vehicle }} · R$ {{ '%.2f' | format(payment.amount) }} · {{ payment.due_date }} · {{ payment.status }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="correction_amount">Novo valor (deixe em branco para manter)</label>
+                <input type="number" step="0.01" name="amount" id="correction_amount" />
+            </div>
+            <div class="form-group">
+                <label for="correction_status">Novo status</label>
+                <select name="status" id="correction_status" required>
+                    <option value="pago">Pago</option>
+                    <option value="pendente">Pendente</option>
+                    <option value="atrasado">Atrasado</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="correction_note">Motivo da correção</label>
+                <textarea name="correction_note" id="correction_note" rows="3"></textarea>
+            </div>
+            <button type="submit" class="button">Aplicar correção</button>
         </form>
     </section>
 
     <section class="table-card">
         <div class="section-header">
-            <h2>Histórico de pagamentos</h2>
-            <input id="financeSearch" type="text" placeholder="Pesquisar por cliente, veículo ou método" />
+            <h2>Histórico de auditoria de correções</h2>
         </div>
-        {% if upcoming_due > 0 or overdue > 0 %}
+        <table>
+            <thead>
+                <tr><th>Pagamento</th><th>Alterado por</th><th>De</th><th>Para</th><th>Valor anterior</th><th>Novo valor</th><th>Motivo</th><th>Data</th></tr>
+            </thead>
+            <tbody>
+                <!-- auditoria zerada/sem registros visíveis -->
+            </tbody>
+        </table>
+    </section>
+    {% endif %}
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Histórico de pagamentos</h2>
+            <div style="display: flex; gap: 10px;">
+                <input id="financeSearch" type="text" placeholder="Pesquisar por cliente, veículo ou método" />
+                <a href="/export/finance-pdf" class="button" style="background: #4caf50; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;">📄 PDF</a>
+                <a href="/export/payments" class="button" style="background: #2196f3; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;">📊 CSV</a>
+            </div>
+        </div>
+        {# Indicadores zerados #}
+        {% if false %}
         <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-            {% if overdue > 0 %}
+                {% if false %}
             <div style="padding: 12px 15px; background: #ffebee; border-left: 4px solid #f44336; border-radius: 4px; flex: 1; min-width: 250px;">
-                <strong style="color: #c62828;">🚨 {{ overdue }} parcela(s) vencida(s)</strong>
-                <p style="margin: 5px 0 0; font-size: 13px; color: #d32f2f;">Ação imediata necessária</p>
+                <strong style="color: #c62828;">🚨 0 parcela(s) vencida(s)</strong>
+                <p style="margin: 5px 0 0; font-size: 13px; color: #d32f2f;">Aviso baseado em vencimento passado para pagamentos não pagos.</p>
             </div>
             {% endif %}
-            {% if upcoming_due > 0 %}
+            {% if false %}
             <div style="padding: 12px 15px; background: #fff8e1; border-left: 4px solid #fbc02d; border-radius: 4px; flex: 1; min-width: 250px;">
-                <strong style="color: #f57f17;">⏰ {{ upcoming_due }} parcela(s) preste(s) a vencer</strong>
+                <strong style="color: #f57f17;">⏰ 0 parcela(s) preste(s) a vencer</strong>
                 <p style="margin: 5px 0 0; font-size: 13px; color: #f57f17;">Próximos 7 dias</p>
             </div>
             {% endif %}
@@ -147,33 +206,7 @@
                 <tr><th>Cliente</th><th>Veículo</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Alerta</th><th>Método</th></tr>
             </thead>
             <tbody>
-                {% for payment in payments %}
-                    <tr {% if payment.alert_status == 'vencido' %}style="background-color: #ffcdd2;"{% elif payment.alert_status == 'prestes_vencer' %}style="background-color: #fff9c4;"{% endif %}>
-                        <td>{{ payment.customer }}</td>
-                        <td>{{ payment.vehicle }}</td>
-                        <td>R$ {{ '%.2f' | format(payment.amount) }}</td>
-                        <td>{{ payment.due_date }}</td>
-                        <td>
-                            <span style="display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;
-                                {% if payment.status == 'pago' %}background: #c8e6c9; color: #2e7d32;
-                                {% elif payment.status == 'pendente' %}background: #ffe0b2; color: #e65100;
-                                {% elif payment.status == 'atrasado' %}background: #ffcdd2; color: #c62828;
-                                {% endif %}">
-                                {{ payment.status | upper }}
-                            </span>
-                        </td>
-                        <td>
-                            {% if payment.alert_status == 'vencido' %}
-                                <span style="color: #d32f2f; font-weight: bold;">⚠️ VENCIDO</span>
-                            {% elif payment.alert_status == 'prestes_vencer' %}
-                                <span style="color: #f57f17; font-weight: bold;">⏰ PRÓXIMO</span>
-                            {% else %}
-                                <span style="color: #666;">-</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ payment.payment_method or 'Boleto' }}</td>
-                    </tr>
-                {% endfor %}
+                <!-- Histórico de pagamentos zerado -->
             </tbody>
         </table>
     </section>

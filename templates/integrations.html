@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Integração com Mapas</h2>
+        <p>O MotoRent oferece suporte a múltiplas plataformas de mapeamento para máxima flexibilidade.</p>
+
+        <h3 style="margin-top: 24px;">🗺️ Google Maps</h3>
+        <p>Para ativar o Google Maps em tempo real na telemetria:</p>
+        <ol>
+            <li>Acesse <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a></li>
+            <li>Crie um novo projeto</li>
+            <li>Ative as APIs: "Maps JavaScript API" e "Directions API"</li>
+            <li>Gere uma chave de API com restrições geográficas</li>
+            <li>Adicione a chave no arquivo <code>templates/telemetry.html</code>:</li>
+        </ol>
+        <div style="background: rgba(0,0,0,0.05); padding: 16px; border-radius: 8px; margin: 12px 0; font-family: monospace; font-size: 0.9rem;">
+&lt;script src="https://maps.googleapis.com/maps/api/js?key=SUA_API_KEY&gt;&lt;/script&gt;
+        </div>
+        <p><strong>Custo:</strong> Primeiros 28.500 carregamentos/mês são gratuitos</p>
+        <p><strong>Link:</strong> <a href="https://developers.google.com/maps" target="_blank">Google Maps Documentation</a></p>
+
+        <h3 style="margin-top: 24px;">🗺️ OpenStreetMap (Leaflet)</h3>
+        <p>Já integrado! Sem custos, sem restrições. Usado como fallback quando Google Maps não está disponível.</p>
+        <p><strong>Link:</strong> <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a></p>
+
+        <h3 style="margin-top: 24px;">📱 Waze</h3>
+        <p>Integre Waze para navegação integrada dos motoristas:</p>
+        <ol>
+            <li>Adicione links de navegação Waze nas informações de destino</li>
+            <li>Use a URI: <code>https://waze.com/ul?ll=LAT,LNG&navigate=yes</code></li>
+            <li>Exemplo em HTML:</li>
+        </ol>
+        <div style="background: rgba(0,0,0,0.05); padding: 16px; border-radius: 8px; margin: 12px 0; font-family: monospace; font-size: 0.9rem;">
+&lt;a href="https://waze.com/ul?ll=-3.73,-38.54&navigate=yes" target="_blank"&gt;
+    Abrir no Waze
+&lt;/a&gt;
+        </div>
+        <p><strong>Vantagens:</strong> Navegação em tempo real, alertas de trânsito, comunidade de motoristas</p>
+        <p><strong>Link:</strong> <a href="https://developers.waze.com" target="_blank">Waze Developer</a></p>
+
+        <h3 style="margin-top: 24px;">📍 Apple Maps</h3>
+        <p>Para usuários iOS:</p>
+        <div style="background: rgba(0,0,0,0.05); padding: 16px; border-radius: 8px; margin: 12px 0; font-family: monospace; font-size: 0.9rem;">
+maps://maps.apple.com/?ll=LAT,LNG&q=Search%20Term
+        </div>
+
+        <h3 style="margin-top: 24px;">🚀 Próximos passos</h3>
+        <ul>
+            <li>✅ Telemetria com OpenStreetMap (já ativo)</li>
+            <li>⚙️ Google Maps (requer API key)</li>
+            <li>⚙️ Botões de navegação Waze (pronto para adicionar)</li>
+            <li>⚙️ Histórico de rotas e geofencing</li>
+            <li>⚙️ Integração com APIs de trânsito em tempo real</li>
+        </ul>
+    </section>
+
+    <section class="table-card">
+        <h2>Status das integrações</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Plataforma</th>
+                    <th>Status</th>
+                    <th>Custo</th>
+                    <th>Ação</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>OpenStreetMap</td>
+                    <td><span class="badge" style="background: #10b981;">✓ Ativo</span></td>
+                    <td>Gratuito</td>
+                    <td><a href="{{ url_for('telemetry') }}" class="button secondary">Visualizar</a></td>
+                </tr>
+                <tr>
+                    <td>Google Maps</td>
+                    <td><span class="badge" style="background: #f59e0b;">⚠ Aguardando configuração</span></td>
+                    <td>Até 28.500 req/mês (grátis)</td>
+                    <td><a href="https://console.cloud.google.com" target="_blank" class="button secondary">Configurar</a></td>
+                </tr>
+                <tr>
+                    <td>Waze</td>
+                    <td><span class="badge" style="background: #8b5cf6;">🔧 Desenvolvimento</span></td>
+                    <td>Gratuito</td>
+                    <td><a href="https://developers.waze.com" target="_blank" class="button secondary">Docs</a></td>
+                </tr>
+                <tr>
+                    <td>Apple Maps</td>
+                    <td><span class="badge" style="background: #6b7280;">📋 Planejado</span></td>
+                    <td>Gratuito</td>
+                    <td>—</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

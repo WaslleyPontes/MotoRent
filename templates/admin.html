@@ -62,7 +62,10 @@
 
 <section class="dashboard-grid admin-grid">
     <div class="panel admin-panel">
-        <div class="panel-header"><h3>Saúde administrativa</h3></div>
+        <div class="panel-header">
+            <h3>Saúde administrativa</h3>
+            <button id="resetHealthBtn" class="button" style="background: #ff9800; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">⟳ Zerar</button>
+        </div>
         <div class="table-card">
             <table>
                 <thead>
@@ -84,7 +87,7 @@
     <div class="table-card">
         <table>
             <thead>
-                <tr><th>Nome</th><th>E-mail</th><th>Função</th></tr>
+                <tr><th>Nome</th><th>E-mail</th><th>Função</th><th>Ações</th></tr>
             </thead>
             <tbody>
                 {% for user in recent_users %}
@@ -92,10 +95,76 @@
                         <td>{{ user.username }}</td>
                         <td>{{ user.email }}</td>
                         <td>{{ user.role }}</td>
+                        <td>
+                            <button class="btn-delete-user" data-user-id="{{ user.id }}" data-user-name="{{ user.username }}" style="background: #f44336; color: white; padding: 4px 8px; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">Deletar</button>
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Reset Health Button
+    document.getElementById('resetHealthBtn').addEventListener('click', async () => {
+        if (!confirm('Tem certeza que deseja resetar a saúde administrativa? Isso vai zerar pagamentos em atraso, multas e manutenções programadas.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/admin/reset-health', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': document.querySelector('[name="csrf_token"]')?.value || ''
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                alert('Saúde administrativa resetada com sucesso!');
+                location.reload();
+            } else {
+                alert('Erro ao resetar saúde administrativa');
+            }
+        } catch (error) {
+            console.error('Erro:', error);
+            alert('Erro ao resetar saúde administrativa');
+        }
+    });
+    
+    // Delete User Buttons
+    document.querySelectorAll('.btn-delete-user').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-user-id');
+            const userName = btn.getAttribute('data-user-name');
+            
+            if (!confirm(`Tem certeza que deseja deletar o usuário "${userName}"?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/users/${userId}/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': document.querySelector('[name="csrf_token"]')?.value || ''
+                    }
+                });
+                
+                if (response.ok) {
+                    alert('Usuário deletado com sucesso!');
+                    location.reload();
+                } else {
+                    const data = await response.json();
+                    alert(`Erro: ${data.error || 'Não foi possível deletar o usuário'}`);
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao deletar usuário');
+            }
+        });
+    });
+</script>
 {% endblock %}

@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="content-grid">
+    <section class="metrics-section">
+        <div class="metric-card">
+            <div class="metric-header"><span class="metric-icon">📋</span><h3>Total de locações</h3></div>
+            <p class="large-value">{{ stats.total_rentals }}</p>
+        </div>
+        <div class="metric-card">
+            <div class="metric-header"><span class="metric-icon">📅</span><h3>Locações ativas</h3></div>
+            <p class="large-value">{{ stats.upcoming_rentals }}</p>
+        </div>
+        <div class="metric-card">
+            <div class="metric-header"><span class="metric-icon">✓</span><h3>Locações finalizadas</h3></div>
+            <p class="large-value">{{ stats.completed_rentals }}</p>
+        </div>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Locações ativas</h2>
+        </div>
+        {% if upcoming %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>E-mail</th>
+                        <th>Veículo</th>
+                        <th>Placa</th>
+                        <th>Início</th>
+                        <th>Fim</th>
+                        <th>Status</th>
+                        <th>Observações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rental in upcoming %}
+                    <tr>
+                        <td>{{ rental.customer_name }}</td>
+                        <td>{{ rental.customer_email or '—' }}</td>
+                        <td>{{ rental.vehicle_brand }} {{ rental.vehicle_model }}</td>
+                        <td>{{ rental.vehicle_plate }}</td>
+                        <td>{{ rental.start_date }}</td>
+                        <td>{{ rental.end_date }}</td>
+                        <td><span class="badge active">{{ rental.status }}</span></td>
+                        <td>{{ rental.notes or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Nenhuma locação ativa no momento.</p>
+        {% endif %}
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Histórico de locações</h2>
+        </div>
+        {% if rentals %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>E-mail</th>
+                        <th>Veículo</th>
+                        <th>Placa</th>
+                        <th>Início</th>
+                        <th>Fim</th>
+                        <th>Dias</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rental in rentals %}
+                    <tr>
+                        <td>{{ rental.customer_name }}</td>
+                        <td>{{ rental.customer_email or '—' }}</td>
+                        <td>{{ rental.vehicle_brand }} {{ rental.vehicle_model }}</td>
+                        <td>{{ rental.vehicle_plate }}</td>
+                        <td>{{ rental.start_date }}</td>
+                        <td>{{ rental.end_date }}</td>
+                        <td>
+                            {% set start = rental.start_date %}
+                            {% set end = rental.end_date %}
+                            ~{{ (end|length) }}d
+                        </td>
+                        <td>{{ rental.status }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Nenhuma locação no histórico.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

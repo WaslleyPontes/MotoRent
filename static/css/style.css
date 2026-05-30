@@ -175,6 +175,90 @@ button, input, textarea, select {
     color: var(--muted);
 }
 
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+    margin-top: 16px;
+}
+
+.quick-actions a.button {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 18px;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #ffffff;
+}
+
+.badge.status-pago { background: #10b981; }
+.badge.status-pendente { background: #f59e0b; }
+.badge.status-atrasado { background: #ef4444; }
+.badge.status-cancelado { background: #6b7280; }
+
+.zone-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.zone-indicator[data-zone='ok'] {
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+}
+
+.zone-indicator[data-zone='alert'] {
+    background: rgba(239, 68, 68, 0.14);
+    color: #ef4444;
+}
+
+#mapCanvas {
+    width: 100%;
+    min-height: 380px;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: #111827;
+    margin-top: 16px;
+}
+
+.map-small {
+    min-height: 420px;
+}
+
+.panel {
+    min-height: 340px;
+}
+
+.tables-section {
+    padding: 24px;
+}
+
+.section-header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.topbar p,
+.section-header p {
+    line-height: 1.6;
+}
+
 #themeToggle,
 .button.secondary,
 button.install-button {
@@ -266,6 +350,24 @@ body.sidebar-open .backdrop {
     align-items: center;
     gap: 14px;
     margin-bottom: 18px;
+}
+
+/* Value inside metric cards */
+.metric-card .value {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+/* Centered variant for specific metric cards (e.g., Receita paga) */
+.metric-card.centered .metric-header {
+    justify-content: center;
+    gap: 10px;
+}
+.metric-card.centered .value,
+.metric-card.centered .small-text {
+    text-align: center;
 }
 
 .metric-icon {
@@ -778,40 +880,68 @@ table tr + tr {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 999;
+    z-index: 1100;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
 }
 
 .support-toggle {
-    width: 60px;
-    height: 60px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
-    background: var(--accent);
-    border: none;
+    background: linear-gradient(135deg, #2c86ff, #57abff);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.8rem;
-    box-shadow: 0 8px 24px rgba(44, 134, 255, 0.3);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    font-size: 1.9rem;
+    box-shadow: 0 18px 42px rgba(44, 134, 255, 0.24);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
     color: #fff;
+    position: relative;
+    overflow: hidden;
+}
+
+.support-toggle::after {
+    content: 'Suporte';
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%) translateX(-10px);
+    white-space: nowrap;
+    background: rgba(15, 23, 42, 0.9);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .support-toggle:hover {
-    transform: scale(1.1);
-    box-shadow: 0 12px 32px rgba(44, 134, 255, 0.4);
+    transform: scale(1.05);
+    box-shadow: 0 22px 48px rgba(44, 134, 255, 0.32);
+}
+
+.support-toggle:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(-6px);
 }
 
 .support-menu {
     position: absolute;
-    bottom: 80px;
+    bottom: 84px;
     right: 0;
     width: 320px;
+    max-width: min(320px, calc(100vw - 32px));
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 24px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
     overflow: hidden;
     animation: slideUp 0.3s ease;
 }
@@ -926,6 +1056,10 @@ table tr + tr {
     .support-widget {
         bottom: 16px;
         right: 16px;
+    }
+
+    .support-toggle::after {
+        display: none;
     }
 
     .support-menu {

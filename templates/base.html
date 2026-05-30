@@ -31,13 +31,19 @@
                 <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}"><span class="nav-icon">🏠</span>Dashboard</a>
                 <a href="{{ url_for('customers') }}" class="{{ 'active' if request.endpoint == 'customers' else '' }}"><span class="nav-icon">👥</span>Clientes</a>
                 <a href="{{ url_for('vehicles') }}" class="{{ 'active' if request.endpoint == 'vehicles' else '' }}"><span class="nav-icon">🏍️</span>Veículos</a>
+                <a href="{{ url_for('reservations') }}" class="{{ 'active' if request.endpoint == 'reservations' else '' }}"><span class="nav-icon">📅</span>Reservas</a>
                 <a href="{{ url_for('pos') }}" class="{{ 'active' if request.endpoint == 'pos' else '' }}"><span class="nav-icon">🛒</span>PDV</a>
+                <a href="{{ url_for('rental_history') }}" class="{{ 'active' if request.endpoint == 'rental_history' else '' }}"><span class="nav-icon">📋</span>Locações</a>
                 <a href="{{ url_for('finance') }}" class="{{ 'active' if request.endpoint == 'finance' else '' }}"><span class="nav-icon">💰</span>Financeiro</a>
+                <a href="{{ url_for('payments') }}" class="{{ 'active' if request.endpoint == 'payments' else '' }}"><span class="nav-icon">💳</span>Pagamentos</a>
                 <a href="{{ url_for('fines') }}" class="{{ 'active' if request.endpoint == 'fines' else '' }}"><span class="nav-icon">🚨</span>Multas</a>
                 <a href="{{ url_for('maintenance') }}" class="{{ 'active' if request.endpoint == 'maintenance' else '' }}"><span class="nav-icon">🛠️</span>Manutenção</a>
+                <a href="{{ url_for('vehicle_inspection') }}" class="{{ 'active' if request.endpoint == 'vehicle_inspection' else '' }}"><span class="nav-icon">👁️</span>Vistoria</a>
                 <a href="{{ url_for('telemetry') }}" class="{{ 'active' if request.endpoint == 'telemetry' else '' }}"><span class="nav-icon">📍</span>Telemetria</a>
                 <a href="{{ url_for('upload_document') }}" class="{{ 'active' if request.endpoint == 'upload_document' else '' }}"><span class="nav-icon">📄</span>Documentos</a>
                 <a href="{{ url_for('background_check') }}" class="{{ 'active' if request.endpoint == 'background_check' else '' }}"><span class="nav-icon">🔍</span>Background</a>
+                <a href="{{ url_for('integrations') }}" class="{{ 'active' if request.endpoint == 'integrations' else '' }}"><span class="nav-icon">🔗</span>Integrações</a>
+                <a href="{{ url_for('faq') }}" class="{{ 'active' if request.endpoint == 'faq' else '' }}"><span class="nav-icon">❓</span>FAQ</a>
                 {% if session.get('role') == 'admin' %}
                     <a href="{{ url_for('admin') }}" class="{{ 'active' if request.endpoint == 'admin' else '' }}"><span class="nav-icon">⚙️</span>Admin</a>
                     <a href="{{ url_for('users') }}" class="{{ 'active' if request.endpoint == 'users' else '' }}"><span class="nav-icon">👤</span>Usuários</a>
@@ -69,6 +75,8 @@
                 <button id="themeToggle">Modo Claro</button>
             </header>
 
+            <!-- Quick actions removed per request -->
+
             {% with messages = get_flashed_messages() %}
                 {% if messages %}
                     <div class="message-container">
@@ -90,13 +98,13 @@
     
     <!-- Support Widget -->
     <div id="supportWidget" class="support-widget">
-        <div class="support-toggle" id="supportToggle">
+        <button type="button" class="support-toggle" id="supportToggle" title="Abrir suporte">
             <span class="support-icon">💬</span>
-        </div>
+        </button>
         <div class="support-menu" id="supportMenu" style="display: none;">
             <div class="support-header">
                 <h3>Suporte Rápido</h3>
-                <button class="close-btn" id="supportClose">&times;</button>
+                <button class="close-btn" id="supportClose" aria-label="Fechar">&times;</button>
             </div>
             <div class="support-options">
                 <a href="https://wa.me/5511999991234?text=Olá,%20preciso%20de%20suporte%20para%20o%20MotoRent" target="_blank" class="support-option whatsapp">
@@ -113,7 +121,7 @@
                         <p class="support-opt-desc">Resposta em 2h</p>
                     </div>
                 </a>
-                <button class="support-option chat" id="chatBtn">
+                <button class="support-option chat" id="chatBtn" type="button">
                     <span class="support-opt-icon">💬</span>
                     <div>
                         <p class="support-opt-title">Chat ao Vivo</p>
@@ -128,6 +136,7 @@
     </div>
 
     <script>
+        const supportWidget = document.getElementById('supportWidget');
         const supportToggle = document.getElementById('supportToggle');
         const supportMenu = document.getElementById('supportMenu');
         const supportClose = document.getElementById('supportClose');
@@ -138,6 +147,12 @@
         
         supportClose.addEventListener('click', () => {
             supportMenu.style.display = 'none';
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!supportWidget.contains(event.target) && supportMenu.style.display === 'block') {
+                supportMenu.style.display = 'none';
+            }
         });
         
         document.getElementById('chatBtn').addEventListener('click', () => {

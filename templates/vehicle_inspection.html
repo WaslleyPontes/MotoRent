@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="cards-grid finance-cards">
+    <article class="card finance-card">
+        <div class="card-header"><h2>Total de vistorias</h2></div>
+        <p class="large-value">{{ inspections|length }}</p>
+        <p class="small-text">Registro de inspeções</p>
+    </article>
+    <article class="card finance-card">
+        <div class="card-header"><h2>Veículos cadastrados</h2></div>
+        <p class="large-value">{{ vehicles|length }}</p>
+        <p class="small-text">Disponíveis para vistoria</p>
+    </article>
+</section>
+
+<div class="content-grid">
+    <section class="form-card">
+        <h2>Nova vistoria</h2>
+        <p>Registre a inspeção de um veículo durante entrada, saída ou manutenção.</p>
+        <form method="post" action="{{ url_for('vehicle_inspection') }}">
+            <div class="form-group">
+                <label for="vehicle_id">Veículo</label>
+                <select name="vehicle_id" id="vehicle_id" required>
+                    <option value="">Selecione um veículo</option>
+                    {% for vehicle in vehicles %}
+                        <option value="{{ vehicle.id }}">{{ vehicle.brand }} {{ vehicle.model }} ({{ vehicle.plate }}) - {{ vehicle.status }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Itens verificados</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <label><input type="checkbox" name="items" value="pneus" /> Pneus (calibragem/rasgos)</label>
+                    <label><input type="checkbox" name="items" value="freios" /> Freios (pastilhas/disco)</label>
+                    <label><input type="checkbox" name="items" value="luzes" /> Luzes/Setas/LED</label>
+                    <label><input type="checkbox" name="items" value="oleo" /> Nível de óleo</label>
+                    <label><input type="checkbox" name="items" value="bateria" /> Bateria/Conexões</label>
+                    <label><input type="checkbox" name="items" value="corrente" /> Corrente/Transmissão</label>
+                    <label><input type="checkbox" name="items" value="espelhos" /> Espelhos</label>
+                    <label><input type="checkbox" name="items" value="documentos" /> Documentos/Chave</label>
+                    <label><input type="checkbox" name="items" value="carenagem" /> Carenagem/Plásticos</label>
+                    <label><input type="checkbox" name="items" value="outros" /> Outros</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="inspection_type">Tipo de vistoria</label>
+                <select name="inspection_type" id="inspection_type" required>
+                    <option value="entrada">Entrada (check-in)</option>
+                    <option value="saida">Saída (check-out)</option>
+                    <option value="manutencao">Manutenção preventiva</option>
+                    <option value="acidente">Acidente / Dano</option>
+                    <option value="periodica">Periódica</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="condition">Condição geral</label>
+                <select name="condition" id="condition" required>
+                    <option value="bom">Bom</option>
+                    <option value="regular">Regular</option>
+                    <option value="ruim">Ruim</option>
+                    <option value="danificado">Danificado</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="fuel_level">Nível de combustível</label>
+                <select name="fuel_level" id="fuel_level" required>
+                    <option value="E">E - Vazio</option>
+                    <option value="1">1/4</option>
+                    <option value="2">1/2</option>
+                    <option value="3">3/4</option>
+                    <option value="F">F - Cheio</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="mileage">Quilometragem</label>
+                <input type="number" name="mileage" id="mileage" placeholder="Ex: 45000" required />
+            </div>
+            <div class="form-group">
+                <label for="notes">Observações</label>
+                <textarea name="notes" id="notes" rows="4" placeholder="Descreva qualquer dano, pneu furado, óleo, etc."></textarea>
+            </div>
+            <button type="submit" class="button">Registrar vistoria</button>
+        </form>
+    </section>
+
+    <section class="table-card">
+        <div class="section-header">
+            <h2>Histórico de vistorias</h2>
+            <input id="inspectionSearch" type="text" placeholder="Pesquisar por veículo, inspetor ou tipo" />
+        </div>
+        <table id="inspectionsTable">
+            <thead>
+                <tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Condição</th><th>Combustível</th><th>KM</th><th>Inspetor</th><th>Data</th><th>Observações</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for inspection in inspections %}
+                <tr>
+                    <td>{{ inspection.vehicle }}</td>
+                    <td>{{ inspection.plate }}</td>
+                    <td>
+                        {% if inspection.inspection_type == 'entrada' %}
+                            <span style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 4px; font-weight: bold;">Entrada</span>
+                        {% elif inspection.inspection_type == 'saida' %}
+                            <span style="background: #f3e5f5; color: #7b1fa2; padding: 4px 8px; border-radius: 4px; font-weight: bold;">Saída</span>
+                        {% elif inspection.inspection_type == 'manutencao' %}
+                            <span style="background: #e8f5e9; color: #388e3c; padding: 4px 8px; border-radius: 4px; font-weight: bold;">Manutenção</span>
+                        {% elif inspection.inspection_type == 'acidente' %}
+                            <span style="background: #ffebee; color: #c62828; padding: 4px 8px; border-radius: 4px; font-weight: bold;">Acidente</span>
+                        {% else %}
+                            <span style="background: #fff3e0; color: #e65100; padding: 4px 8px; border-radius: 4px; font-weight: bold;">Periódica</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if inspection.condition == 'bom' %}
+                            <span style="color: #388e3c; font-weight: bold;">✓ Bom</span>
+                        {% elif inspection.condition == 'regular' %}
+                            <span style="color: #f57f17; font-weight: bold;">⚠ Regular</span>
+                        {% elif inspection.condition == 'ruim' %}
+                            <span style="color: #d32f2f; font-weight: bold;">✗ Ruim</span>
+                        {% else %}
+                            <span style="color: #c62828; font-weight: bold;">🚫 Danificado</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">{{ inspection.fuel_level }}</td>
+                    <td>{{ inspection.mileage }}</td>
+                    <td>{{ inspection.inspector_name }}</td>
+                    <td>{{ inspection.inspection_date }}</td>
+                    <td>{{ inspection.notes or '-' }}</td>
+                    <td>
+                        <a href="/export/inspection/{{ inspection.id }}" class="button" style="background: #4caf50; color: white; padding: 4px 8px; border-radius: 3px; text-decoration: none; font-size: 12px; display: inline-block;">📄 PDF</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" style="text-align: center; color: var(--muted);">Nenhuma vistoria registrada.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const inspectionRows = Array.from(document.querySelectorAll('#inspectionsTable tbody tr'));
+    const inspectionSearch = document.getElementById('inspectionSearch');
+
+    function filterInspections() {
+        const term = inspectionSearch.value.toLowerCase();
+        inspectionRows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(term) ? '' : 'none';
+        });
+    }
+
+    inspectionSearch?.addEventListener('input', filterInspections);
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.querySelector('form[action="{{ url_for('vehicle_inspection') }}"]');
+    if (!form) return;
+    form.addEventListener('submit', (e) => {
+        // coletar itens verificados e anexar às observações
+        const checked = Array.from(document.querySelectorAll('input[name="items"]:checked')).map(ch => ch.value);
+        const notes = document.getElementById('notes');
+        if (checked.length) {
+            const prefix = 'Itens verificados: ' + checked.join(', ') + '.\n';
+            notes.value = prefix + (notes.value || '');
+        }
+    });
+});
+</script>
+{% endblock %}

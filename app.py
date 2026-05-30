@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, g, request, redirect, url_for, session, flash, send_from_directory, abort
+from flask import Flask, jsonify, render_template, g, request, redirect, url_for, session, flash, send_from_directory, send_file, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps
@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 import secrets
 import json
+import io
+from fpdf import FPDF
 import urllib.request
 import urllib.error
 import datetime
@@ -120,6 +122,9 @@ def ensure_schema_migrations(db):
         db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_phone_unique ON customers(phone) WHERE phone IS NOT NULL AND phone != ""')
     except sqlite3.Error:
         pass
+    db.execute('CREATE TABLE IF NOT EXISTS reservations (id INTEGER PRIMARY KEY, customer_id INTEGER, vehicle_id INTEGER, start_date TEXT, end_date TEXT, status TEXT, created_at TEXT, notes TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id), FOREIGN KEY(vehicle_id) REFERENCES vehicles(id))')
+    db.execute('CREATE TABLE IF NOT EXISTS payment_audit (id INTEGER PRIMARY KEY, payment_id INTEGER, changed_by INTEGER, changed_at TEXT, old_status TEXT, new_status TEXT, old_amount REAL, new_amount REAL, note TEXT, FOREIGN KEY(payment_id) REFERENCES payments(id), FOREIGN KEY(changed_by) REFERENCES users(id))')
+    db.execute('CREATE TABLE IF NOT EXISTS vehicle_inspection (id INTEGER PRIMARY KEY, vehicle_id INTEGER, inspector_id INTEGER, inspection_date TEXT, inspection_type TEXT, condition TEXT, fuel_level TEXT, mileage INTEGER, notes TEXT, photos TEXT, created_at TEXT, FOREIGN KEY(vehicle_id) REFERENCES vehicles(id), FOREIGN KEY(inspector_id) REFERENCES users(id))')
     db.execute('CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, customer_id INTEGER, vehicle_id INTEGER, sale_price REAL, installments INTEGER, installment_value REAL, sale_date TEXT, status TEXT, payment_method TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id), FOREIGN KEY(vehicle_id) REFERENCES vehicles(id))')
     db.commit()
 
@@ -168,6 +173,12 @@ def validate_csrf_token(token):
     return token and token == session.get('_csrf_token')
 
 
+def sync_overdue_payments():
+    db = get_db()
+    db.execute("UPDATE payments SET status = 'atrasado' WHERE status != 'pago' AND date(due_date) < date('now')")
+    db.commit()
+
+
 @app.context_processor
 def inject_csrf_token():
     return {'csrf_token': generate_csrf_token()}
@@ -179,6 +190,8 @@ def enforce_https_and_csrf():
         token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         if not validate_csrf_token(token):
             abort(400, 'CSRF_token inválido ou ausente.')
+
+    sync_overdue_payments()
 
     if os.environ.get('FLASK_ENV', '').lower() == 'production':
         proto = request.headers.get('X-Forwarded-Proto', 'http')
@@ -748,6 +761,105 @@ def pos():
     return render_template('pos.html', title='PDV', subtitle='Ponto de venda de motos', customers=customers, available_vehicles=available_vehicles, sales=sales)
 
 
+@app.route('/reservations', methods=['GET', 'POST'])
+@login_required
+def reservations():
+    db = get_db()
+    if request.method == 'POST':
+        try:
+            customer_id = int(request.form.get('customer_id', 0))
+            vehicle_id = int(request.form.get('vehicle_id', 0))
+        except (TypeError, ValueError):
+            customer_id = 0
+            vehicle_id = 0
+
+        start_date = request.form.get('start_date', '').strip()
+        end_date = request.form.get('end_date', '').strip()
+        notes = request.form.get('notes', '').strip()
+
+        if not customer_id or not vehicle_id or not start_date or not end_date:
+            flash('Preencha todos os campos obrigatórios.', 'error')
+            return redirect(url_for('reservations'))
+
+        if start_date > end_date:
+            flash('Data de início deve ser anterior ou igual à data de fim.', 'error')
+            return redirect(url_for('reservations'))
+
+        overlap = query_db(
+            "SELECT COUNT(*) AS count FROM reservations WHERE vehicle_id = ? AND status IN ('confirmada','reservado') AND NOT (end_date < ? OR start_date > ?)",
+            (vehicle_id, start_date, end_date), one=True)['count']
+
+        if overlap:
+            flash('O veículo já está reservado no período selecionado.', 'error')
+            return redirect(url_for('reservations'))
+
+        db.execute('INSERT INTO reservations (customer_id, vehicle_id, start_date, end_date, status, created_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                   (customer_id, vehicle_id, start_date, end_date, 'confirmada', datetime.date.today().isoformat(), notes))
+        current_status = query_db('SELECT status FROM vehicles WHERE id = ?', (vehicle_id,), one=True)
+        if current_status and current_status['status'] == 'disponível':
+            db.execute('UPDATE vehicles SET status = ? WHERE id = ?', ('reservado', vehicle_id))
+        db.commit()
+        flash('Reserva confirmada com sucesso.')
+        return redirect(url_for('reservations'))
+
+    customers = query_db('SELECT * FROM customers ORDER BY name')
+    available_vehicles = query_db("SELECT * FROM vehicles WHERE status = 'disponível' ORDER BY model")
+    reservations_data = [dict(row) for row in query_db("SELECT r.*, c.name AS customer_name, v.model AS vehicle_model, v.plate AS vehicle_plate FROM reservations r JOIN customers c ON r.customer_id = c.id JOIN vehicles v ON r.vehicle_id = v.id ORDER BY r.start_date DESC")]
+    upcoming_reservations = [r for r in reservations_data if r['end_date'] >= datetime.date.today().isoformat()]
+    return render_template('reservations.html', title='Reservas', subtitle='Reserva online e disponibilidade de frota', customers=customers, available_vehicles=available_vehicles, reservations=reservations_data, upcoming_reservations=upcoming_reservations)
+
+
+@app.route('/receipt/<int:sale_id>')
+@login_required
+def sale_receipt(sale_id):
+    sale = query_db(
+        'SELECT s.*, c.name AS customer, c.email AS customer_email, c.phone AS customer_phone, v.brand AS vehicle_brand, v.model AS vehicle_model, v.plate AS vehicle_plate '
+        'FROM sales s JOIN customers c ON s.customer_id = c.id JOIN vehicles v ON s.vehicle_id = v.id WHERE s.id = ?',
+        (sale_id,), one=True)
+    if not sale:
+        abort(404)
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'Recibo de Venda MotoRent', ln=True)
+    pdf.set_font('Arial', '', 12)
+    pdf.ln(4)
+    pdf.cell(0, 8, f'Venda ID: {sale_id}', ln=True)
+    pdf.cell(0, 8, f'Data: {sale["sale_date"]}', ln=True)
+    pdf.cell(0, 8, f'Cliente: {sale["customer"]}', ln=True)
+    pdf.cell(0, 8, f'E-mail: {sale["customer_email"] or "-"}', ln=True)
+    pdf.cell(0, 8, f'Telefone: {sale["customer_phone"] or "-"}', ln=True)
+    pdf.ln(4)
+    pdf.cell(0, 8, 'Veículo:', ln=True)
+    pdf.cell(0, 8, f'  {sale["vehicle_brand"]} {sale["vehicle_model"]} - {sale["vehicle_plate"]}', ln=True)
+    pdf.ln(4)
+    pdf.cell(0, 8, f'Valor total: R$ {sale["sale_price"]:.2f}', ln=True)
+    pdf.cell(0, 8, f'Parcelas: {sale["installments"]}', ln=True)
+    pdf.cell(0, 8, f'Valor por parcela: R$ {sale["installment_value"]:.2f}', ln=True)
+    pdf.cell(0, 8, f'Forma de pagamento: {sale["payment_method"]}', ln=True)
+    pdf.cell(0, 8, f'Status: {sale["status"]}', ln=True)
+    pdf.ln(8)
+    pdf.multi_cell(0, 8, 'Obrigado por escolher a MotoRent. Este comprovante confirma a venda e poderá ser usado como recibo fiscal sempre que necessário.')
+
+    pdf_buffer = io.BytesIO(pdf.output(dest='S').encode('latin-1'))
+    pdf_buffer.seek(0)
+    return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=f'receipt_{sale_id}.pdf')
+
+
+@app.route('/faq')
+@login_required
+def faq():
+    faqs = [
+        {'question': 'Como faço uma reserva online?', 'answer': 'Vá até a página de Reservas, escolha o cliente, o veículo e o período desejado, e confirme a reserva.'},
+        {'question': 'Como altero o status de um veículo?', 'answer': 'Acesse a página de Veículos e edite o registro do veículo para atualizar o status.'},
+        {'question': 'Como recebo um recibo em PDF?', 'answer': 'No PDV, clique em PDF ao lado da venda para baixar o recibo.'},
+        {'question': 'Como posso consultar o histórico do cliente?', 'answer': 'Abra o perfil do cliente na página de Clientes para ver pagamentos, multas e veículos associados.'},
+        {'question': 'Como ativar o modo escuro?', 'answer': 'Use o botão de modo no canto superior para alternar entre tema claro e escuro. A escolha é lembrada automaticamente.'}
+    ]
+    return render_template('faq.html', title='FAQ', subtitle='Perguntas frequentes e suporte', faqs=faqs)
+
+
 @app.route('/fines', methods=['GET', 'POST'])
 @login_required
 def fines():
@@ -800,6 +912,44 @@ def telemetry():
     raw_telemetry = query_db('SELECT t.*, v.model AS vehicle FROM telemetry t JOIN vehicles v ON t.vehicle_id = v.id ORDER BY t.timestamp DESC')
     telemetry = [dict(row) for row in raw_telemetry]
     return render_template('telemetry.html', title='Telemetria', subtitle='Dados de localização e velocidade', telemetry=telemetry)
+
+
+@app.route('/vehicle-inspection', methods=['GET', 'POST'])
+@login_required
+def vehicle_inspection():
+    db = get_db()
+    if request.method == 'POST':
+        vehicle_id = int(request.form.get('vehicle_id', 0))
+        inspection_type = request.form.get('inspection_type', 'entrada')
+        condition = request.form.get('condition', 'bom')
+        fuel_level = request.form.get('fuel_level', 'E')
+        mileage = int(request.form.get('mileage', 0) or 0)
+        notes = request.form.get('notes', '').strip()
+        
+        if not vehicle_id or mileage < 0:
+            flash('Preencha os dados da vistoria corretamente.', 'error')
+            return redirect(url_for('vehicle_inspection'))
+        
+        inspection_date = datetime.date.today().isoformat()
+        created_at = datetime.datetime.now().isoformat()
+        
+        db.execute('INSERT INTO vehicle_inspection (vehicle_id, inspector_id, inspection_date, inspection_type, condition, fuel_level, mileage, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   (vehicle_id, session.get('user_id'), inspection_date, inspection_type, condition, fuel_level, mileage, notes, created_at))
+        db.commit()
+        flash('Vistoria registrada com sucesso.')
+        return redirect(url_for('vehicle_inspection'))
+    
+    vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
+    inspections = [dict(row) for row in query_db(
+        'SELECT i.*, v.model AS vehicle, v.plate AS plate, u.username AS inspector_name FROM vehicle_inspection i '
+        'JOIN vehicles v ON i.vehicle_id = v.id '
+        'JOIN users u ON i.inspector_id = u.id '
+        'ORDER BY i.inspection_date DESC LIMIT 50'
+    )]
+    
+    return render_template('vehicle_inspection.html', title='Vistoria de Veículos', 
+                         subtitle='Inspeção de entrada, saída e manutenção', 
+                         vehicles=vehicles, inspections=inspections)
 
 
 @app.route('/upload-document', methods=['GET', 'POST'])
@@ -884,6 +1034,108 @@ def background_check():
     return render_template('background_check.html', title='Background Check', subtitle='Avaliação de risco do condutor', customers=customers, background_result=background_result)
 
 
+@app.route('/rental-history')
+@login_required
+def rental_history():
+    rentals = [dict(row) for row in query_db(
+        'SELECT r.*, c.name AS customer_name, c.email AS customer_email, v.brand AS vehicle_brand, v.model AS vehicle_model, v.plate AS vehicle_plate FROM reservations r '
+        'JOIN customers c ON r.customer_id = c.id JOIN vehicles v ON r.vehicle_id = v.id ORDER BY r.start_date DESC'
+    )]
+    
+    today = datetime.date.today().isoformat()
+    upcoming = [r for r in rentals if r['end_date'] > today and r['status'] == 'confirmada']
+    completed = [r for r in rentals if r['end_date'] <= today]
+    
+    stats = {
+        'total_rentals': len(rentals),
+        'upcoming_rentals': len(upcoming),
+        'completed_rentals': len(completed)
+    }
+    
+    return render_template('rental_history.html', title='Locações', subtitle='Histórico e gestão de locações de veículos', 
+                         rentals=rentals, upcoming=upcoming, completed=completed, stats=stats)
+
+
+@app.route('/payments', methods=['GET', 'POST'])
+@login_required
+def payments():
+    db = get_db()
+    if request.method == 'POST':
+        action = request.form.get('action', 'create')
+        
+        if action == 'create':
+            customer_id = int(request.form.get('customer_id', 0))
+            vehicle_id = int(request.form.get('vehicle_id', 0))
+            amount = float(request.form.get('amount', 0) or 0)
+            payment_method = request.form.get('payment_method', 'pix')
+            installments = int(request.form.get('installments', 1))
+            
+            if not customer_id or not amount or amount <= 0:
+                flash('Preencha os dados corretamente.', 'error')
+                return redirect(url_for('payments'))
+            
+            if payment_method == 'pix':
+                db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+                          (customer_id, vehicle_id, amount, datetime.date.today().isoformat(), 'pago', 'PIX'))
+                flash(f'Pagamento de R$ {amount:.2f} via PIX registrado com sucesso!')
+                
+            elif payment_method == 'parceled':
+                if installments < 2 or installments > 12:
+                    flash('Parcelas devem estar entre 2 e 12.', 'error')
+                    return redirect(url_for('payments'))
+                
+                installment_value = amount / installments
+                for i in range(installments):
+                    due_date = (datetime.date.today() + datetime.timedelta(days=30 * (i + 1))).isoformat()
+                    db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+                              (customer_id, vehicle_id, installment_value, due_date, 'pendente', f'Parcelado ({i+1}/{installments})'))
+                db.commit()
+                flash(f'Parcelamento de R$ {amount:.2f} em {installments}x de R$ {installment_value:.2f} criado com sucesso!')
+            
+            elif payment_method == 'debit':
+                db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+                          (customer_id, vehicle_id, amount, datetime.date.today().isoformat(), 'pago', 'Débito'))
+                flash(f'Pagamento de R$ {amount:.2f} via débito registrado com sucesso!')
+                
+            else:
+                db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+                          (customer_id, vehicle_id, amount, datetime.date.today().isoformat(), 'pago', 'Cartão'))
+                flash(f'Pagamento de R$ {amount:.2f} via cartão registrado com sucesso!')
+            
+            db.commit()
+            return redirect(url_for('payments'))
+    
+    customers = query_db('SELECT * FROM customers ORDER BY name')
+    vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
+    
+    total_payments = query_db('SELECT COUNT(*) AS count FROM payments', one=True)['count']
+    paid_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
+    pending_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pendente'", one=True)['total'] or 0
+    overdue_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'atrasado'", one=True)['total'] or 0
+    
+    recent_payments = [dict(row) for row in query_db(
+        'SELECT p.*, c.name AS customer_name, v.model AS vehicle_model FROM payments p '
+        'JOIN customers c ON p.customer_id = c.id LEFT JOIN vehicles v ON p.vehicle_id = v.id '
+        'ORDER BY p.id DESC LIMIT 20'
+    )]
+    
+    payment_methods = [dict(row) for row in query_db(
+        "SELECT payment_method, COUNT(*) AS count, SUM(amount) AS total FROM payments GROUP BY payment_method"
+    )]
+    
+    return render_template('payments.html', title='Pagamentos', subtitle='Integração com PIX, cartão e parcelamento',
+                         customers=customers, vehicles=vehicles,
+                         total_payments=total_payments, paid_amount=paid_amount, 
+                         pending_amount=pending_amount, overdue_amount=overdue_amount,
+                         recent_payments=recent_payments, payment_methods=payment_methods)
+
+
+@app.route('/integrations')
+@login_required
+def integrations():
+    return render_template('integrations.html', title='Integrações', subtitle='Google Maps, Waze e outras plataformas')
+
+
 @app.route('/manifest.json')
 def manifest():
     return send_from_directory(app.static_folder, 'manifest.json')
@@ -963,16 +1215,82 @@ def finance():
             amount = float(request.form.get('amount', 0) or 0)
             due_date = request.form.get('due_date', '')
             status = request.form.get('status', 'pendente')
+            if session.get('role') != 'admin':
+                status = 'pendente'
             payment_method = request.form.get('payment_method', 'Boleto')
             
-            if not customer_id or not vehicle_id or not due_date:
-                flash('Preencha todos os campos obrigatórios.', 'error')
+            if not customer_id or not vehicle_id or not due_date or amount <= 0:
+                flash('Preencha todos os campos obrigatórios com valores válidos.', 'error')
                 return redirect(url_for('finance'))
-            
+
+            try:
+                due_date_obj = datetime.datetime.strptime(due_date, '%Y-%m-%d').date()
+            except ValueError:
+                flash('Data de vencimento inválida. Use o formato AAAA-MM-DD.', 'error')
+                return redirect(url_for('finance'))
+
+            if status == 'pendente' and due_date_obj <= datetime.date.today():
+                flash('Pagamentos pendentes devem ter data de vencimento no futuro.', 'error')
+                return redirect(url_for('finance'))
+
+            allowed_statuses = ['pago', 'pendente', 'atrasado']
+            if status not in allowed_statuses:
+                status = 'pendente'
+
             db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
                        (customer_id, vehicle_id, amount, due_date, status, payment_method))
             db.commit()
             flash('Pagamento registrado com sucesso.')
+            return redirect(url_for('finance'))
+        elif action == 'correct_payment':
+            if session.get('role') != 'admin':
+                flash('Apenas administradores podem corrigir pagamentos.', 'error')
+                return redirect(url_for('finance'))
+
+            payment_id = int(request.form.get('payment_id', 0))
+            new_status = request.form.get('status', 'pendente')
+            new_amount = request.form.get('amount')
+            correction_note = request.form.get('correction_note', '').strip() or 'Correção manual pelo administrador.'
+
+            if not payment_id or new_status not in ['pago', 'pendente', 'atrasado']:
+                flash('Selecione um pagamento válido e informe o novo status.', 'error')
+                return redirect(url_for('finance'))
+
+            payment = query_db('SELECT * FROM payments WHERE id = ?', (payment_id,), one=True)
+            if not payment:
+                flash('Pagamento não encontrado.', 'error')
+                return redirect(url_for('finance'))
+
+            try:
+                due_date_obj = datetime.datetime.strptime(payment['due_date'], '%Y-%m-%d').date()
+            except ValueError:
+                flash('Data de vencimento inválida no pagamento selecionado.', 'error')
+                return redirect(url_for('finance'))
+
+            if new_amount is not None and new_amount != '':
+                try:
+                    new_amount = float(new_amount)
+                except ValueError:
+                    flash('Valor inválido para o pagamento.', 'error')
+                    return redirect(url_for('finance'))
+                if new_amount <= 0:
+                    flash('O valor do pagamento deve ser maior que zero.', 'error')
+                    return redirect(url_for('finance'))
+            else:
+                new_amount = payment['amount']
+
+            if new_status == 'pendente' and due_date_obj <= datetime.date.today():
+                flash('Não é permitido deixar parcelas pendentes com data de vencimento passada.', 'error')
+                return redirect(url_for('finance'))
+
+            old_amount = payment['amount']
+            old_status = payment['status']
+
+            db.execute('UPDATE payments SET amount = ?, status = ? WHERE id = ?', (new_amount, new_status, payment_id))
+            db.execute('INSERT INTO payment_audit (payment_id, changed_by, changed_at, old_status, new_status, old_amount, new_amount, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                       (payment_id, session.get('user_id'), datetime.datetime.now().isoformat(), old_status, new_status, old_amount, new_amount, correction_note))
+            db.commit()
+            flash('Pagamento corrigido e auditado com sucesso.')
             return redirect(url_for('finance'))
 
     total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
@@ -1005,6 +1323,14 @@ def finance():
     overdue_payments = [dict(row) for row in query_db('SELECT p.*, c.name AS customer, v.model AS vehicle FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = "atrasado" ORDER BY p.due_date DESC')]
     client_options = [dict(row) for row in query_db('SELECT DISTINCT c.id, c.name FROM customers c ORDER BY c.name')]
     vehicles_options = [dict(row) for row in query_db('SELECT id, model, plate FROM vehicles ORDER BY model')]
+    correction_payments = [dict(row) for row in query_db(
+        'SELECT p.id, c.name AS customer, v.model AS vehicle, p.amount, p.due_date, p.status FROM payments p '
+        'JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id '
+        'ORDER BY p.due_date DESC LIMIT 50'
+    )]
+    payment_audit_logs = [dict(row) for row in query_db(
+        'SELECT a.*, u.username AS changed_by_name FROM payment_audit a LEFT JOIN users u ON a.changed_by = u.id ORDER BY a.changed_at DESC LIMIT 15'
+    )]
     revenue_history = [dict(row) for row in query_db("SELECT strftime('%Y-%m', due_date) AS month, SUM(amount) AS total FROM payments WHERE status = 'pago' GROUP BY month ORDER BY month DESC LIMIT 6")]
     assets_value = total_vehicles * 12000
     liabilities = overdue_amount + pending_fine_total
@@ -1025,6 +1351,8 @@ def finance():
         overdue_payments=overdue_payments,
         client_options=client_options,
         vehicles_options=vehicles_options,
+        correction_payments=correction_payments,
+        payment_audit_logs=payment_audit_logs,
         revenue_history=revenue_history,
         assets_value=assets_value,
         liabilities=liabilities,
@@ -1267,6 +1595,173 @@ def address_api(cep):
 @login_required
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+# ===== NOVAS ROTAS PARA FUNCIONALIDADES SOLICITADAS =====
+
+@app.route('/api/users/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def delete_user(user_id):
+    """Deleta um usuário do sistema (apenas admin)"""
+    db = get_db()
+    user = query_db('SELECT id FROM users WHERE id = ?', (user_id,), one=True)
+    if not user:
+        return jsonify({'error': 'Usuário não encontrado'}), 404
+    
+    # Não permitir deletar o próprio admin
+    if user_id == session.get('user_id'):
+        return jsonify({'error': 'Não é possível deletar sua própria conta'}), 400
+    
+    db.execute('DELETE FROM users WHERE id = ?', (user_id,))
+    db.commit()
+    return jsonify({'status': 'ok', 'message': 'Usuário deletado com sucesso'})
+
+
+@app.route('/api/admin/reset-health', methods=['POST'])
+@admin_required
+def reset_admin_health():
+    """Reseta as métricas de saúde administrativa"""
+    db = get_db()
+    
+    # Zerar as métricas limpando dados ou atualizando status
+    db.execute("UPDATE payments SET status = 'pendente' WHERE status != 'pago'")
+    # Nota: as tabelas 'fines' e 'maintenance' podem não existir, então não vamos tentar deletar
+    
+    db.commit()
+    return jsonify({
+        'status': 'ok', 
+        'message': 'Saúde administrativa resetada com sucesso',
+        'zeroed_items': {
+            'overdue_payments': 'resetados para pendente'
+        }
+    })
+
+
+@app.route('/export/inspection/<int:inspection_id>')
+@login_required
+def export_inspection_pdf(inspection_id):
+    """Exporta um relatório de vistoria em PDF"""
+    inspection = query_db(
+        'SELECT i.*, v.model, v.plate, v.brand, u.username AS inspector_name FROM vehicle_inspection i '
+        'JOIN vehicles v ON i.vehicle_id = v.id '
+        'JOIN users u ON i.inspector_id = u.id '
+        'WHERE i.id = ?',
+        (inspection_id,), one=True
+    )
+    
+    if not inspection:
+        abort(404)
+    
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'Relatório de Vistoria de Veículo', ln=True)
+    pdf.set_font('Arial', '', 12)
+    pdf.ln(4)
+    
+    # Informações da vistoria
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'Dados da Vistoria', ln=True)
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 7, f'ID da Vistoria: {inspection_id}', ln=True)
+    pdf.cell(0, 7, f'Data: {inspection["inspection_date"]}', ln=True)
+    pdf.cell(0, 7, f'Inspetor: {inspection["inspector_name"]}', ln=True)
+    pdf.cell(0, 7, f'Tipo de Vistoria: {inspection["inspection_type"].replace("_", " ").title()}', ln=True)
+    pdf.ln(4)
+    
+    # Informações do veículo
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'Dados do Veículo', ln=True)
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 7, f'Marca/Modelo: {inspection["brand"]} {inspection["model"]}', ln=True)
+    pdf.cell(0, 7, f'Placa: {inspection["plate"]}', ln=True)
+    pdf.cell(0, 7, f'Quilometragem: {inspection["mileage"]} km', ln=True)
+    pdf.cell(0, 7, f'Nível de Combustível: {inspection["fuel_level"]}/F', ln=True)
+    pdf.ln(4)
+    
+    # Condições
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'Condições Gerais', ln=True)
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 7, f'Condição Geral: {inspection["condition"].title()}', ln=True)
+    pdf.ln(4)
+    
+    # Observações
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'Observações', ln=True)
+    pdf.set_font('Arial', '', 10)
+    observations = inspection["notes"] or "Nenhuma observação registrada"
+    pdf.multi_cell(0, 7, observations)
+    pdf.ln(4)
+    
+    # Rodapé
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(0, 7, f'Relatório gerado em {datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")}', ln=True)
+    pdf.cell(0, 7, 'MotoRent - Sistema de Gerenciamento de Frota', ln=True)
+    
+    pdf_buffer = io.BytesIO(pdf.output(dest='S').encode('latin-1'))
+    pdf_buffer.seek(0)
+    return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=f'vistoria_{inspection_id}.pdf')
+
+
+@app.route('/export/finance-pdf')
+@login_required
+def export_finance_pdf():
+    """Exporta relatório financeiro em PDF"""
+    total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
+    overdue_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'atrasado'", one=True)['total'] or 0
+    pending_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pendente'", one=True)['total'] or 0
+    total_payments = query_db('SELECT COUNT(*) AS count FROM payments', one=True)['count']
+    
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'Relatório Financeiro MotoRent', ln=True)
+    pdf.set_font('Arial', '', 12)
+    pdf.ln(4)
+    
+    # Resumo financeiro
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'Resumo Financeiro', ln=True)
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 7, f'Receita Paga: R$ {total_income:,.2f}', ln=True)
+    pdf.cell(0, 7, f'Valores em Atraso: R$ {overdue_amount:,.2f}', ln=True)
+    pdf.cell(0, 7, f'Valores Pendentes: R$ {pending_amount:,.2f}', ln=True)
+    pdf.cell(0, 7, f'Total de Pagamentos: {total_payments}', ln=True)
+    pdf.ln(4)
+    
+    # Histórico de pagamentos
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'Histórico de Pagamentos (últimos 20)', ln=True)
+    pdf.set_font('Arial', '', 9)
+    
+    payments_rows = query_db('SELECT p.id, p.customer_id, p.vehicle_id, p.amount, p.due_date, p.status, p.payment_method, c.name AS customer, v.model AS vehicle FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id ORDER BY p.due_date DESC LIMIT 20')
+    payments = [dict(row) for row in payments_rows]
+    
+    # Cabeçalho da tabela
+    pdf.cell(30, 6, 'Data', border=1)
+    pdf.cell(50, 6, 'Cliente', border=1)
+    pdf.cell(40, 6, 'Veículo', border=1)
+    pdf.cell(25, 6, 'Valor', border=1)
+    pdf.cell(25, 6, 'Status', border=1)
+    pdf.ln()
+    
+    # Dados da tabela
+    for payment in payments:
+        pdf.cell(30, 6, payment['due_date'][:10], border=1)
+        pdf.cell(50, 6, payment['customer'][:15], border=1)
+        pdf.cell(40, 6, payment['vehicle'][:12], border=1)
+        pdf.cell(25, 6, f"R$ {payment['amount']:.2f}", border=1)
+        pdf.cell(25, 6, payment['status'][:8], border=1)
+        pdf.ln()
+    
+    pdf.ln(4)
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(0, 7, f'Relatório gerado em {datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")}', ln=True)
+    
+    pdf_buffer = io.BytesIO(pdf.output(dest='S').encode('latin-1'))
+    pdf_buffer.seek(0)
+    return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name='relatorio_financeiro.pdf')
 
 
 if __name__ == '__main__':

@@ -12,7 +12,7 @@
                 <select name="brand" id="brand" required onchange="updateModelOptions()">
                     <option value="Honda">Honda</option>
                     <option value="Yamaha">Yamaha</option>
-                    <option value="Suzuki">Suzuki</option>
+                    <option value="Haojue">Haojue</option>
                 </select>
             </div>
             <div class="form-group">
@@ -131,11 +131,11 @@
         <div class="section-header">
             <h2>Suporte à frota</h2>
         </div>
-        <div class="support-panel">
+                <div class="support-panel">
             <p>Para solicitações de suporte, entre em contato com nossa equipe especializada de pós-venda e assistência técnica.</p>
             <ul>
-                <li><strong>WhatsApp:</strong> +55 11 99999-1234</li>
-                <li><strong>E-mail:</strong> suporte@motoexperts.com.br</li>
+                <li><strong>WhatsApp:</strong> 85 99406-5508</li>
+                <li><strong>E-mail:</strong> pwaslley@gmail.com</li>
                 <li><strong>Horário de atendimento:</strong> Segunda a sexta, 08:00 – 18:00</li>
             </ul>
             <p>Use o PDV para finalizar vendas e atualizar automaticamente o estoque e o status do veículo.</p>
@@ -146,11 +146,11 @@
 
 {% block scripts %}
 <script>
-    // Modelos de motos por marca
+    // Modelos de motos por marca (atualizados)
     const motorcycleModels = {
-        'Honda': ['Honda CG 160', 'Honda CB 300F', 'Honda XRE 300', 'Honda NC 750X'],
-        'Yamaha': ['Yamaha Fazer 250', 'Yamaha NMax 160', 'Yamaha YZF-R3', 'Yamaha MT-07'],
-        'Suzuki': ['Suzuki GSX-R1000', 'Suzuki GSX-S1000', 'Suzuki Burgman 125', 'Suzuki V-Strom 650']
+        'Honda': ['Honda Start 160', 'Honda Fan 160', 'Bros 160'],
+        'Yamaha': ['Factor', 'Fazer 125'],
+        'Haojue': ['NK']
     };
 
     function updateModelOptions() {
@@ -200,18 +200,18 @@
                 <line x1="122" y1="52" x2="132" y2="68" stroke="#333" stroke-width="2"/>
                 <text x="85" y="95" text-anchor="middle" font-size="10" fill="#999">Yamaha</text>
             `;
-        } else if (brand === 'Suzuki') {
+        } else if (brand === 'Haojue') {
             svg += `
                 <circle cx="30" cy="70" r="18" class="bike-wheel"/>
                 <circle cx="30" cy="70" r="14" class="bike-rim"/>
                 <circle cx="140" cy="70" r="18" class="bike-wheel"/>
                 <circle cx="140" cy="70" r="14" class="bike-rim"/>
-                <ellipse cx="85" cy="40" rx="32" ry="19" fill="#cc0000"/>
-                <path d="M 58 32 L 75 22 L 98 32 Z" fill="#cc0000"/>
+                <ellipse cx="85" cy="40" rx="32" ry="19" fill="#3a7bd5"/>
+                <path d="M 58 32 L 75 22 L 98 32 Z" fill="#3a7bd5"/>
                 <rect x="75" y="28" width="20" height="15" fill="#333" rx="3"/>
                 <line x1="50" y1="52" x2="38" y2="68" stroke="#333" stroke-width="2"/>
                 <line x1="120" y1="52" x2="132" y2="68" stroke="#333" stroke-width="2"/>
-                <text x="85" y="95" text-anchor="middle" font-size="10" fill="#999">Suzuki</text>
+                <text x="85" y="95" text-anchor="middle" font-size="10" fill="#999">Haojue</text>
             `;
         } else {
             svg += '<text x="100" y="50" text-anchor="middle" fill="var(--muted)" font-size="14">Selecione uma marca</text>';

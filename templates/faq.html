@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="form-card">
+    <h2>Perguntas frequentes</h2>
+    <p>Encontre respostas rápidas para dúvidas comuns sobre o sistema e atendimento.</p>
+    <div class="faq-list">
+        {% for item in faqs %}
+            <div class="faq-item">
+                <h3>{{ item.question }}</h3>
+                <p>{{ item.answer }}</p>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

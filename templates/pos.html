@@ -24,16 +24,18 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="sale_price">Preço de venda</label>
-                <input type="number" step="0.01" name="sale_price" id="sale_price" required />
+                <label for="sale_price_display">Preço de venda</label>
+                <input type="text" name="sale_price_display" id="sale_price_display" required placeholder="0,00" />
+                <input type="hidden" name="sale_price" id="sale_price" />
             </div>
             <div class="form-group">
                 <label for="installments">Parcelas</label>
                 <input type="number" name="installments" id="installments" value="1" min="1" required />
             </div>
             <div class="form-group">
-                <label for="installment_value">Valor da parcela</label>
-                <input type="number" step="0.01" name="installment_value" id="installment_value" required />
+                <label for="installment_value_display">Valor da parcela</label>
+                <input type="text" name="installment_value_display" id="installment_value_display" required placeholder="0,00" />
+                <input type="hidden" name="installment_value" id="installment_value" />
             </div>
             <div class="form-group">
                 <label for="payment_method">Forma de pagamento</label>
@@ -56,7 +58,7 @@
         </div>
         <table>
             <thead>
-                <tr><th>Data</th><th>Cliente</th><th>Veículo</th><th>Placa</th><th>Valor</th><th>Parcelas</th><th>Valor parcela</th><th>Pagamento</th><th>Status</th></tr>
+                <tr><th>Data</th><th>Cliente</th><th>Veículo</th><th>Placa</th><th>Valor</th><th>Parcelas</th><th>Valor parcela</th><th>Pagamento</th><th>Status</th><th>Recibo</th></tr>
             </thead>
             <tbody>
                 {% for sale in sales %}
@@ -70,10 +72,54 @@
                     <td>R$ {{ '%.2f'|format(sale.installment_value) }}</td>
                     <td>{{ sale.payment_method }}</td>
                     <td>{{ sale.status }}</td>
+                    <td><a href="{{ url_for('sale_receipt', sale_id=sale.id) }}" class="button secondary" target="_blank">PDF</a></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </section>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    function parseBR(value) {
+        if (!value) return 0;
+        const clean = value.replace(/\./g, '').replace(/,/g, '.').replace(/[^0-9.\-]/g, '');
+        return parseFloat(clean) || 0;
+    }
+
+    function formatBR(value) {
+        const num = Number(value) || 0;
+        return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    const saleDisplay = document.getElementById('sale_price_display');
+    const saleHidden = document.getElementById('sale_price');
+    const installmentDisplay = document.getElementById('installment_value_display');
+    const installmentHidden = document.getElementById('installment_value');
+
+    if (saleDisplay) {
+        saleDisplay.addEventListener('input', (e) => {
+            const parsed = parseBR(e.target.value);
+            e.target.value = formatBR(parsed);
+        });
+    }
+    if (installmentDisplay) {
+        installmentDisplay.addEventListener('input', (e) => {
+            const parsed = parseBR(e.target.value);
+            e.target.value = formatBR(parsed);
+        });
+    }
+
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', () => {
+            if (saleDisplay && saleHidden) saleHidden.value = parseBR(saleDisplay.value).toFixed(2);
+            if (installmentDisplay && installmentHidden) installmentHidden.value = parseBR(installmentDisplay.value).toFixed(2);
+        });
+    }
+});
+</script>
 {% endblock %}

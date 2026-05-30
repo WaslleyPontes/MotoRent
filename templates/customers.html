@@ -22,7 +22,7 @@
             <div class="form-group">
                 <label for="document">Documento</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="text" name="document" id="document" required style="flex: 1;" />
+                    <input type="text" name="document" id="document" required style="flex: 1;" maxlength="14" placeholder="000.000.000-00" />
                     <button type="button" id="clearDocument" class="button secondary" style="padding: 10px 12px;" title="Limpar">✕</button>
                 </div>
             </div>
@@ -94,7 +94,13 @@
                 <tr>
                     <td>{{ customer.name }}</td>
                     <td>{{ customer.document_type or 'CPF' }}</td>
-                    <td>{{ customer.document }}</td>
+                    <td>
+                        {% if customer.document and customer.document|length >= 11 %}
+                            {{ customer.document[:3] }}.{{ customer.document[3:6] }}.{{ customer.document[6:9] }}-{{ customer.document[9:] }}
+                        {% else %}
+                            {{ customer.document or '-' }}
+                        {% endif %}
+                    </td>
                     <td>{{ customer.email }}</td>
                     <td>{{ customer.phone }}</td>
                     <td>{{ customer.cep or '-' }}</td>
@@ -188,6 +194,22 @@
 
         cepInput.addEventListener('input', (e) => {
             e.target.value = formatCep(e.target.value);
+        });
+
+        // Formatar CPF automaticamente
+        function formatCPF(value) {
+            const clean = value.replace(/\D/g, '').slice(0,11);
+            if (clean.length <= 3) return clean;
+            if (clean.length <= 6) return clean.replace(/(\d{3})(\d+)/, '$1.$2');
+            if (clean.length <= 9) return clean.replace(/(\d{3})(\d{3})(\d+)/, '$1.$2.$3');
+            return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, '$1.$2.$3-$4');
+        }
+
+        const documentInput = document.getElementById('document');
+        documentInput.addEventListener('input', (e) => {
+            const start = e.target.selectionStart;
+            e.target.value = formatCPF(e.target.value);
+            e.target.setSelectionRange(start, start);
         });
 
         // Limpar documento

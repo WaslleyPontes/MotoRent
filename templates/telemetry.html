@@ -11,6 +11,12 @@
 </section>
 
 <section class="tables-section">
+    <div class="section-header"><h2>Mapa de telemetria (Google Maps)</h2></div>
+    <div id="googleMap" style="width: 100%; height: 500px; border-radius: 8px; border: 1px solid var(--border);"></div>
+    <p style="margin-top: 10px; font-size: 0.9rem; color: var(--muted);">💡 Clique nos marcadores para detalhes do veículo ou integre com <a href="https://maps.google.com" target="_blank">Google Maps</a> e <a href="https://waze.com" target="_blank">Waze</a></p>
+</section>
+
+<section class="tables-section">
     <div class="section-header"><h2>Telemetria</h2></div>
     <div class="table-controls">
         <button type="button" class="button secondary" id="exportTelemetryBtn">Exportar telemetria</button>
@@ -36,7 +42,7 @@
     </div>
 </section>
 <section class="tables-section">
-    <div class="section-header"><h2>Mapa de telemetria</h2></div>
+    <div class="section-header"><h2>Mapa de telemetria (OpenStreetMap)</h2></div>
     <div id="telemetryMap" class="map-small"></div>
 </section>
 <section class="tables-section">
@@ -207,6 +213,8 @@
                 const isOutside = distance > fortalezaRadius;
                 
                 const markerColor = isOutside ? 'red' : 'blue';
+                const wazeUrl = `https://waze.com/ul?ll=${record.lat},${record.lng}&navigate=yes`;
+                const googleUrl = `https://www.google.com/maps/search/?api=1&query=${record.lat},${record.lng}`;
                 const marker = L.marker([record.lat, record.lng], {
                     icon: L.icon({
                         iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${markerColor}.png`,
@@ -220,7 +228,9 @@
                     <strong>${record.vehicle}</strong><br>
                     Velocidade: ${record.speed} km/h<br>
                     Status: ${record.status}<br>
-                    Zona: ${isOutside ? '⚠ Fora de zona' : '✓ Fortaleza'}
+                    Zona: ${isOutside ? '⚠ Fora de zona' : '✓ Fortaleza'}<br><br>
+                    <a href="${googleUrl}" target="_blank" class="button secondary" style="font-size:0.8rem; padding: 8px 10px; margin-right: 6px;">Google Maps</a>
+                    <a href="${wazeUrl}" target="_blank" class="button secondary" style="font-size:0.8rem; padding: 8px 10px;">Waze</a>
                 `);
                 
                 telemetryMarkers.push(marker);
@@ -285,6 +295,55 @@
         renderSpeedChart(initialTelemetry);
         renderTelemetryMap(initialTelemetry);
         setInterval(fetchTelemetryData, 20000);
+
+        // Google Maps integration
+        const googleMapContainer = document.getElementById('googleMap');
+        if (googleMapContainer && typeof google !== 'undefined') {
+            const googleMap = new google.maps.Map(googleMapContainer, {
+                zoom: 11,
+                center: { lat: -3.73, lng: -38.54 },
+                mapTypeId: 'roadmap'
+            });
+
+            const markers = [];
+            initialTelemetry.forEach(record => {
+                const marker = new google.maps.Marker({
+                    position: { lat: record.lat, lng: record.lng },
+                    map: googleMap,
+                    title: record.vehicle,
+                    icon: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                });
+
+                const googleUrl = `https://www.google.com/maps/search/?api=1&query=${record.lat},${record.lng}`;
+                const wazeUrl = `https://waze.com/ul?ll=${record.lat},${record.lng}&navigate=yes`;
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `
+                        <div style="font-family: Arial; font-size: 14px;">
+                            <strong>${record.vehicle}</strong><br>
+                            Velocidade: ${record.speed} km/h<br>
+                            Status: ${record.status}<br>
+                            Local: ${record.location}<br><br>
+                            <a href="${googleUrl}" target="_blank" style="display:inline-block;padding:6px 10px;margin-right:6px;background:#eef6ff;border-radius:10px;color:#1d4ed8;text-decoration:none;font-size:0.85rem;">Google Maps</a>
+                            <a href="${wazeUrl}" target="_blank" style="display:inline-block;padding:6px 10px;background:#eef6ff;border-radius:10px;color:#1d4ed8;text-decoration:none;font-size:0.85rem;">Waze</a>
+                        </div>
+                    `
+                });
+
+                marker.addListener('click', () => {
+                    markers.forEach(m => m.infoWindow && m.infoWindow.close());
+                    infoWindow.open(googleMap, marker);
+                    marker.infoWindow = infoWindow;
+                });
+
+                markers.push(marker);
+            });
+        } else if (googleMapContainer && typeof google === 'undefined') {
+            googleMapContainer.innerHTML = '<p style="padding: 20px; text-align: center; color: var(--muted);">Google Maps não está carregado. Adicione uma API key do Google Maps para ativar.</p>';
+        }
     });
 </script>
+
+<!-- Google Maps API (add your API key here) -->
+<!-- Uncomment and add your Google Maps API key -->
+<!-- <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script> -->
 {% endblock %}
