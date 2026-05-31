@@ -1695,15 +1695,18 @@ def reset_admin_health():
     db = get_db()
     
     # Zerar as métricas limpando dados ou atualizando status
-    db.execute("UPDATE payments SET status = 'pendente' WHERE status != 'pago'")
-    # Nota: as tabelas 'fines' e 'maintenance' podem não existir, então não vamos tentar deletar
+    db.execute("UPDATE payments SET status = 'pendente' WHERE status = 'atrasado'")
+    db.execute('DELETE FROM fines')
+    db.execute('DELETE FROM maintenance')
     
     db.commit()
     return jsonify({
         'status': 'ok', 
         'message': 'Saúde administrativa resetada com sucesso',
         'zeroed_items': {
-            'overdue_payments': 'resetados para pendente'
+            'overdue_payments': 'resetados para pendente',
+            'fines': 'removidas',
+            'maintenance': 'removidas'
         }
     })
 
