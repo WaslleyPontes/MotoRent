@@ -1695,7 +1695,7 @@ def reset_admin_health():
     db = get_db()
     
     # Zerar as métricas limpando dados ou atualizando status
-    db.execute("UPDATE payments SET status = 'pendente' WHERE status = 'atrasado'")
+    db.execute("UPDATE payments SET status = 'pendente' WHERE status IN ('pago', 'atrasado')")
     db.execute('DELETE FROM fines')
     db.execute('DELETE FROM maintenance')
     
@@ -1704,7 +1704,8 @@ def reset_admin_health():
         'status': 'ok', 
         'message': 'Saúde administrativa resetada com sucesso',
         'zeroed_items': {
-            'overdue_payments': 'resetados para pendente',
+            'completed_payments': 'reclassificados para pendente',
+            'overdue_payments': 'reclassificados para pendente',
             'fines': 'removidas',
             'maintenance': 'removidas'
         }

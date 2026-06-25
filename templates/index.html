@@ -170,13 +170,24 @@
             radius: operationRadius
         }).addTo(map);
 
+        let placedMarkers = 0;
         mapLocations.forEach(vehicle => {
             if (vehicle.lat && vehicle.lng) {
                 L.marker([vehicle.lat, vehicle.lng])
                     .bindPopup(`<strong>${vehicle.model}</strong><br>Status: ${vehicle.status}`)
                     .addTo(map);
+                placedMarkers += 1;
             }
         });
+
+        if (!placedMarkers) {
+            L.marker(operationCenter)
+                .bindPopup('Nenhum veículo geolocalizado encontrado. Atualize latitude e longitude nos cadastros.')
+                .addTo(map)
+                .openPopup();
+        }
+
+        setTimeout(() => map.invalidateSize(), 200);
     });
 </script>
 {% endblock %}

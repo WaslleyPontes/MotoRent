@@ -24,6 +24,7 @@
     <section class="form-card">
         <h2>Registrar pagamento</h2>
         <p>Adicione um novo pagamento via PIX, cartão, débito ou parcelamento.</p>
+        <p class="small-text">Para correções e auditoria de pagamentos, utilize também a página <a href="{{ url_for('finance') }}">Financeiro</a>. Esta página foca em registro rápido.</p>
         <form method="post" action="{{ url_for('payments') }}">
             <div class="form-group">
                 <label for="customer_id">Cliente</label>

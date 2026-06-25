@@ -5,6 +5,7 @@
 
 <section class="tables-section">
     <div class="section-header"><h2>Hodômetros dos veículos</h2></div>
+    <p class="small-text">Mantenha a frota alinhada: atualize a localização dos veículos, acompanhe velocidades e identifique saídas de zona de forma rápida.</p>
     <div id="speedometerContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 20px;">
         <!-- Speedometers will be populated here -->
     </div>
@@ -63,6 +64,7 @@
         const map = L.map('telemetryMap').setView([-3.73, -38.54], 11);
         let speedChart;
         let telemetryMarkers = [];
+        const telemetrySummary = document.getElementById('telemetrySummary');
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
@@ -130,6 +132,10 @@
         function renderSpeedometers(records) {
             if (!speedometerContainer) return;
             speedometerContainer.innerHTML = '';
+            if (!records.length) {
+                speedometerContainer.innerHTML = '<div style="grid-column: 1 / -1; padding: 20px; border-radius: 20px; background: rgba(255,255,255,0.05); color: var(--muted); text-align: center;">Nenhum dado de hodômetro disponível no momento.</div>';
+                return;
+            }
             records.forEach(record => {
                 const speedometer = createSpeedometer(record.vehicle, Math.round(record.speed));
                 speedometerContainer.appendChild(speedometer);
@@ -207,6 +213,9 @@
             telemetryMarkers.forEach(marker => map.removeLayer(marker));
             telemetryMarkers = [];
             let outsideCount = 0;
+            if (!records.length) {
+                return;
+            }
 
             records.forEach(record => {
                 const distance = L.latLng(record.lat, record.lng).distanceTo(L.latLng(fortalezaCenter));
