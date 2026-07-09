@@ -8,9 +8,8 @@ echo ======================================
 echo.
 
 REM Verificar se Python está instalado
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo ❌ Erro: Python não está instalado ou não está no PATH
+if not exist "venv\Scripts\python.exe" (
+    echo ❌ Erro: ambiente virtual não encontrado. Execute este script novamente após a criação do venv.
     echo.
     echo Baixe Python em: https://www.python.org/downloads/
     pause
@@ -23,7 +22,7 @@ REM Criar ambiente virtual se não existir
 if not exist "venv" (
     echo.
     echo 📦 Criando ambiente virtual...
-    python -m venv venv
+    py -3 -m venv venv
     if errorlevel 1 (
         echo ❌ Erro ao criar ambiente virtual
         pause
@@ -77,6 +76,7 @@ echo.
 echo Pressione CTRL+C para parar
 echo ======================================
 echo.
+python app.py
 
 python app.py
 pause

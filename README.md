@@ -36,7 +36,7 @@ Este projeto é um protótipo de um sistema de locação de motos com intenção
 1. Abra o terminal na pasta do projeto:
 
 ```powershell
-cd "c:\Users\wasll\Desktop\Nova pasta"
+cd "c:\Users\PROCAMPO\Desktop\MotoRent"
 ```
 
 2. Crie e ative um ambiente virtual Python:
