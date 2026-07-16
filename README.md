@@ -76,11 +76,6 @@ python app.py
 http://127.0.0.1:5000
 ```
 
-## Acesso inicial
-
-- Usuário: `admin`
-- Senha: `admin123`
-
 ## Estrutura das páginas
 
 - `/` - Dashboard principal
