@@ -67,7 +67,16 @@
                         <td>{{ reservation.vehicle_plate }}</td>
                         <td>{{ reservation.start_date }}</td>
                         <td>{{ reservation.end_date }}</td>
-                        <td>{{ reservation.status }}</td>
+                        <td>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <span>{{ reservation.status }}</span>
+                                <form method="post" action="{{ url_for('reservations') }}" style="display:inline;">
+                                    <input type="hidden" name="action" value="delete" />
+                                    <input type="hidden" name="reservation_id" value="{{ reservation.id }}" />
+                                    <button type="submit" class="button secondary" style="padding: 6px 10px;">Excluir</button>
+                                </form>
+                            </div>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -1,9 +1,12 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<section class="form-card">
-    <h2>Perguntas frequentes</h2>
-    <p>Encontre respostas rápidas para dúvidas comuns sobre o sistema e atendimento.</p>
+<section class="form-card faq-page">
+    <div class="section-header">
+        <h2>Perguntas frequentes</h2>
+        <p>Encontre respostas rápidas para dúvidas comuns sobre o sistema, atendimento e uso do painel.</p>
+    </div>
+
     <div class="faq-list">
         {% for item in faqs %}
             <div class="faq-item">
@@ -11,6 +14,11 @@
                 <p>{{ item.answer }}</p>
             </div>
         {% endfor %}
+    </div>
+
+    <div class="support-panel">
+        <h3>Precisa de ajuda?</h3>
+        <p>Use o suporte rápido do canto inferior da tela ou entre em contato pelo WhatsApp ou e-mail.</p>
     </div>
 </section>
 {% endblock %}

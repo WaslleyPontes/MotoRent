@@ -83,11 +83,12 @@
         </div>
         <table>
             <thead>
-                <tr><th>Imagem</th><th>Marca</th><th>Modelo</th><th>Cor</th><th>Placa</th><th>Status</th><th>Seguro</th><th>Cliente</th><th>Ações</th></tr>
+                <tr><th>ID</th><th>Imagem</th><th>Marca</th><th>Modelo</th><th>Cor</th><th>Placa</th><th>Status</th><th>Seguro</th><th>Cliente</th><th>Ações</th></tr>
             </thead>
             <tbody>
                 {% for vehicle in vehicles %}
                 <tr>
+                    <td>#{{ vehicle.id }}</td>
                     <td style="text-align: center;">
                         <svg viewBox="0 0 80 50" xmlns="http://www.w3.org/2000/svg" style="width: 60px; height: 40px;">
                             {% if vehicle.brand == 'Honda' %}

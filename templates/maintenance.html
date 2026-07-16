@@ -47,7 +47,7 @@
                         <td>{{ item.last_service_date }}</td>
                         <td>{{ item.next_service_date }}</td>
                         <td>{{ item.status }}</td>
-                        <td>R$ {{ item.predicted_cost }}</td>
+                        <td>R$ {{ '%.2f'|format(item.predicted_cost or 0) }}</td>
                         <td>{{ item.note }}</td>
                     </tr>
                 {% endfor %}

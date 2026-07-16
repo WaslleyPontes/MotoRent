@@ -71,6 +71,13 @@ def allowed_file(filename):
     return ext in ALLOWED_UPLOAD_EXTENSIONS
 
 
+def normalize_document(document_type, document):
+    value = (document or '').strip()
+    if document_type == 'CPF':
+        return ''.join(ch for ch in value if ch.isdigit())[:11]
+    return ''.join(ch for ch in value if ch.isalnum())
+
+
 def send_reset_email(to_email, reset_url):
     server = app.config['MAIL_SERVER']
     if not server:
@@ -373,6 +380,7 @@ def index():
     overdue_payments = query_db("SELECT COUNT(*) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
     overdue_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'atrasado'", one=True)['total'] or 0
     total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
+    pending_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pendente'", one=True)['total'] or 0
     predicted_revenue = query_db("SELECT SUM(amount) AS total FROM payments WHERE status != 'pago' AND due_date >= date('now')", one=True)['total'] or 0
     operational_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'disponível' OR status = 'alugado'", one=True)['count']
     occupancy_rate = round((active_rentals / total_vehicles * 100) if total_vehicles else 0, 1)
@@ -415,6 +423,7 @@ def index():
         maintenance_vehicles=maintenance_vehicles,
         overdue_payments=overdue_payments,
         overdue_amount=overdue_amount,
+        pending_amount=pending_amount,
         total_income=total_income,
         predicted_revenue=predicted_revenue,
         occupancy_rate=occupancy_rate,
@@ -562,7 +571,7 @@ def customers():
         if action == 'create':
             name = request.form.get('name', '').strip()
             document_type = request.form.get('document_type', 'CPF')
-            document = request.form.get('document', '').strip()
+            document = normalize_document(document_type, request.form.get('document', '').strip())
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
             phone2 = request.form.get('phone2', '').strip()
@@ -620,7 +629,7 @@ def customers():
                 customer_id = 0
             name = request.form.get('name', '').strip()
             document_type = request.form.get('document_type', 'CPF')
-            document = request.form.get('document', '').strip()
+            document = normalize_document(document_type, request.form.get('document', '').strip())
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
             phone2 = request.form.get('phone2', '').strip()
@@ -678,6 +687,10 @@ def customers():
                 customer_id = 0
             if customer_id:
                 db.execute('UPDATE vehicles SET owner_id = NULL WHERE owner_id = ?', (customer_id,))
+                db.execute('DELETE FROM payments WHERE customer_id = ?', (customer_id,))
+                db.execute('DELETE FROM reservations WHERE customer_id = ?', (customer_id,))
+                db.execute('DELETE FROM fines WHERE customer_id = ?', (customer_id,))
+                db.execute('DELETE FROM sales WHERE customer_id = ?', (customer_id,))
                 db.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
                 db.commit()
                 flash('Cliente excluído com sucesso.')
@@ -794,6 +807,10 @@ def vehicles():
             except (TypeError, ValueError):
                 vehicle_id = 0
             if vehicle_id:
+                db.execute('DELETE FROM payments WHERE vehicle_id = ?', (vehicle_id,))
+                db.execute('DELETE FROM reservations WHERE vehicle_id = ?', (vehicle_id,))
+                db.execute('DELETE FROM fines WHERE vehicle_id = ?', (vehicle_id,))
+                db.execute('DELETE FROM sales WHERE vehicle_id = ?', (vehicle_id,))
                 db.execute('DELETE FROM vehicles WHERE id = ?', (vehicle_id,))
                 db.commit()
                 flash('Veículo excluído com sucesso.')
@@ -813,16 +830,34 @@ def pos():
     db = get_db()
     message = None
     if request.method == 'POST':
-        customer_id = int(request.form['customer_id'])
-        vehicle_id = int(request.form['vehicle_id'])
-        sale_price = float(request.form['sale_price'] or 0)
-        installments = int(request.form['installments'] or 1)
-        installment_value = float(request.form['installment_value'] or 0)
+        customer_id = int(request.form.get('customer_id', 0) or 0)
+        vehicle_id = int(request.form.get('vehicle_id', 0) or 0)
+        sale_price_raw = request.form.get('sale_price') or request.form.get('sale_price_display') or 0
+        installment_value_raw = request.form.get('installment_value') or request.form.get('installment_value_display') or 0
+        sale_price = float(str(sale_price_raw).replace('.', '').replace(',', '.')) if str(sale_price_raw).strip() else 0
+        installments = int(request.form.get('installments', 1) or 1)
+        installment_value = float(str(installment_value_raw).replace('.', '').replace(',', '.')) if str(installment_value_raw).strip() else 0
         payment_method = request.form.get('payment_method', 'À vista')
         sale_date = request.form.get('sale_date') or time.strftime('%Y-%m-%d')
 
+        if not customer_id or not vehicle_id or sale_price <= 0:
+            flash('Preencha cliente, veículo e valor de venda corretamente.', 'error')
+            return redirect(url_for('pos'))
+
+        if installments > 1 and installment_value <= 0:
+            installment_value = round(sale_price / installments, 2)
+
         db.execute('INSERT INTO sales (customer_id, vehicle_id, sale_price, installments, installment_value, sale_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                    (customer_id, vehicle_id, sale_price, installments, installment_value, sale_date, 'concluída', payment_method))
+        sale_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+        if installments > 1:
+            for i in range(installments):
+                due_date = (datetime.date.today() + datetime.timedelta(days=30 * (i + 1))).isoformat()
+                db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+                           (customer_id, vehicle_id, installment_value, due_date, 'pendente', f'Parcelado ({i + 1}/{installments})'))
+        else:
+            db.execute('INSERT INTO payments (customer_id, vehicle_id, amount, due_date, status, payment_method) VALUES (?, ?, ?, ?, ?, ?)',
+                       (customer_id, vehicle_id, sale_price, datetime.date.today().isoformat(), 'pago', payment_method))
         db.execute('UPDATE vehicles SET status = ?, owner_id = ? WHERE id = ?', ('vendido', customer_id, vehicle_id))
         db.commit()
         flash('Venda registrada com sucesso e estoque atualizado.')
@@ -839,6 +874,8 @@ def pos():
 def reservations():
     db = get_db()
     if request.method == 'POST':
+        action = request.form.get('action', 'create')
+        reservation_id = int(request.form.get('reservation_id', 0) or 0)
         try:
             customer_id = int(request.form.get('customer_id', 0))
             vehicle_id = int(request.form.get('vehicle_id', 0))
@@ -858,12 +895,27 @@ def reservations():
             flash('Data de início deve ser anterior ou igual à data de fim.', 'error')
             return redirect(url_for('reservations'))
 
+        if action == 'delete':
+            if reservation_id:
+                db.execute('DELETE FROM reservations WHERE id = ?', (reservation_id,))
+                db.commit()
+                flash('Reserva excluída com sucesso.')
+            return redirect(url_for('reservations'))
+
         overlap = query_db(
-            "SELECT COUNT(*) AS count FROM reservations WHERE vehicle_id = ? AND status IN ('confirmada','reservado') AND NOT (end_date < ? OR start_date > ?)",
-            (vehicle_id, start_date, end_date), one=True)['count']
+            "SELECT COUNT(*) AS count FROM reservations WHERE vehicle_id = ? AND id != COALESCE(?, 0) AND status IN ('confirmada','reservado') AND NOT (end_date < ? OR start_date > ?)",
+            (vehicle_id, reservation_id if action == 'update' else None, start_date, end_date), one=True)['count']
 
         if overlap:
             flash('O veículo já está reservado no período selecionado.', 'error')
+            return redirect(url_for('reservations'))
+
+        if action == 'update':
+            if reservation_id:
+                db.execute('UPDATE reservations SET customer_id = ?, vehicle_id = ?, start_date = ?, end_date = ?, notes = ? WHERE id = ?',
+                           (customer_id, vehicle_id, start_date, end_date, notes, reservation_id))
+                db.commit()
+                flash('Reserva atualizada com sucesso.')
             return redirect(url_for('reservations'))
 
         db.execute('INSERT INTO reservations (customer_id, vehicle_id, start_date, end_date, status, created_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -920,6 +972,15 @@ def sale_receipt(sale_id):
     return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=f'receipt_{sale_id}.pdf')
 
 
+@app.route('/health')
+def health():
+    return jsonify({
+        'status': 'ok',
+        'service': 'MotoRent',
+        'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
+    })
+
+
 @app.route('/faq')
 @login_required
 def faq():
@@ -937,6 +998,16 @@ def faq():
 @login_required
 def fines():
     if request.method == 'POST':
+        action = request.form.get('action', 'create')
+        if action == 'delete':
+            fine_id = int(request.form.get('fine_id', 0) or 0)
+            if fine_id:
+                db = get_db()
+                db.execute('DELETE FROM fines WHERE id = ?', (fine_id,))
+                db.commit()
+                flash('Multa removida com sucesso.')
+            return redirect(url_for('fines'))
+
         customer_id = int(request.form['customer_id'])
         vehicle_id = int(request.form['vehicle_id'])
         amount = float(request.form['amount'])
@@ -964,7 +1035,7 @@ def maintenance():
         vehicle_id = int(request.form['vehicle_id'])
         last_service_date = request.form['last_service_date']
         next_service_date = request.form['next_service_date']
-        predicted_cost = float(request.form['predicted_cost'])
+        predicted_cost = float(str(request.form.get('predicted_cost', 0)).replace('.', '').replace(',', '.')) if str(request.form.get('predicted_cost', 0)).strip() else 0
         note = request.form['note']
         db = get_db()
         db.execute('INSERT INTO maintenance (vehicle_id, last_service_date, next_service_date, status, predicted_cost, note) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1066,7 +1137,8 @@ def upload_document():
 
     customers = query_db('SELECT * FROM customers ORDER BY name')
     vehicles = query_db('SELECT * FROM vehicles ORDER BY model')
-    return render_template('upload.html', title='Documentos', subtitle='Upload com OCR inteligente', customers=customers, vehicles=vehicles, ocr_result=ocr_result)
+    documents = [dict(row) for row in query_db('SELECT * FROM documents ORDER BY uploaded_at DESC')]
+    return render_template('upload.html', title='Documentos', subtitle='Upload com OCR inteligente', customers=customers, vehicles=vehicles, ocr_result=ocr_result, documents=documents)
 
 
 @app.route('/background-check', methods=['GET', 'POST'])
@@ -1115,9 +1187,17 @@ def rental_history():
         'JOIN customers c ON r.customer_id = c.id JOIN vehicles v ON r.vehicle_id = v.id ORDER BY r.start_date DESC'
     )]
     
-    today = datetime.date.today().isoformat()
-    upcoming = [r for r in rentals if r['end_date'] > today and r['status'] == 'confirmada']
-    completed = [r for r in rentals if r['end_date'] <= today]
+    today = datetime.date.today()
+    for rental in rentals:
+        try:
+            start_date = datetime.datetime.strptime(rental['start_date'], '%Y-%m-%d').date()
+            end_date = datetime.datetime.strptime(rental['end_date'], '%Y-%m-%d').date()
+            rental['duration_days'] = max((end_date - start_date).days, 0)
+        except (TypeError, ValueError):
+            rental['duration_days'] = 0
+
+    upcoming = [r for r in rentals if datetime.datetime.strptime(r['end_date'], '%Y-%m-%d').date() >= today and r['status'] == 'confirmada']
+    completed = [r for r in rentals if datetime.datetime.strptime(r['end_date'], '%Y-%m-%d').date() < today]
     
     stats = {
         'total_rentals': len(rentals),
@@ -1702,12 +1782,11 @@ def delete_user(user_id):
 def reset_admin_health():
     """Reseta as métricas de saúde administrativa"""
     db = get_db()
-    
-    # Zerar as métricas limpando dados ou atualizando status
-    db.execute("UPDATE payments SET status = 'pendente' WHERE status IN ('pago', 'atrasado')")
+    db.execute('DELETE FROM payments')
     db.execute('DELETE FROM fines')
     db.execute('DELETE FROM maintenance')
-    
+    db.execute('DELETE FROM sales')
+    db.execute('DELETE FROM reservations')
     db.commit()
     return jsonify({
         'status': 'ok', 
@@ -1716,7 +1795,8 @@ def reset_admin_health():
             'completed_payments': 'reclassificados para pendente',
             'overdue_payments': 'reclassificados para pendente',
             'fines': 'removidas',
-            'maintenance': 'removidas'
+            'maintenance': 'removidas',
+            'sales': 'removidas'
         }
     })
 

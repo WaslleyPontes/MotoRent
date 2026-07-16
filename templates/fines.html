@@ -59,7 +59,16 @@
                         <td>R$ {{ fine.amount }}</td>
                         <td>{{ fine.date }}</td>
                         <td>{{ fine.status }}</td>
-                        <td>{{ fine.points }}</td>
+                        <td>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <span>{{ fine.points }}</span>
+                                <form method="post" action="{{ url_for('fines') }}" style="display:inline;">
+                                    <input type="hidden" name="action" value="delete" />
+                                    <input type="hidden" name="fine_id" value="{{ fine.id }}" />
+                                    <button type="submit" class="button secondary" style="padding: 6px 10px;">Excluir</button>
+                                </form>
+                            </div>
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>

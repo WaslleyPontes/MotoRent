@@ -283,6 +283,23 @@ button.install-button {
     margin-left: auto;
 }
 
+.button.danger,
+.btn-delete-user,
+.delete-customer,
+.delete-vehicle {
+    background: #dc2626 !important;
+    color: #fff !important;
+    border: 1px solid #b91c1c !important;
+}
+
+.button.danger:hover,
+.btn-delete-user:hover,
+.delete-customer:hover,
+.delete-vehicle:hover {
+    background: #b91c1c !important;
+    color: #fff !important;
+}
+
 .menu-toggle {
     display: none;
     border: none;
@@ -508,6 +525,26 @@ table {
     min-width: 320px;
 }
 
+.summary-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 10px;
+}
+
+.summary-list li {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    color: var(--muted);
+}
+
+.summary-list strong {
+    color: var(--text);
+}
+
 thead tr {
     border-bottom: 1px solid var(--border);
 }
@@ -720,6 +757,35 @@ table tr + tr {
     border-radius: 20px;
     padding: 20px;
     color: var(--text);
+    margin-top: 20px;
+}
+
+.faq-page {
+    display: grid;
+    gap: 18px;
+}
+
+.faq-list {
+    display: grid;
+    gap: 14px;
+}
+
+.faq-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 16px 18px;
+}
+
+.faq-item h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+}
+
+.faq-item p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
 }
 
 .support-panel ul {

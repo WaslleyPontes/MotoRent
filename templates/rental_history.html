@@ -82,11 +82,7 @@
                         <td>{{ rental.vehicle_plate }}</td>
                         <td>{{ rental.start_date }}</td>
                         <td>{{ rental.end_date }}</td>
-                        <td>
-                            {% set start = rental.start_date %}
-                            {% set end = rental.end_date %}
-                            ~{{ (end|length) }}d
-                        </td>
+                        <td>{{ rental.duration_days }}d</td>
                         <td>{{ rental.status }}</td>
                     </tr>
                     {% endfor %}

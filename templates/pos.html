@@ -58,11 +58,12 @@
         </div>
         <table>
             <thead>
-                <tr><th>Data</th><th>Cliente</th><th>Veículo</th><th>Placa</th><th>Valor</th><th>Parcelas</th><th>Valor parcela</th><th>Pagamento</th><th>Status</th><th>Recibo</th></tr>
+                <tr><th>ID</th><th>Data</th><th>Cliente</th><th>Veículo</th><th>Placa</th><th>Valor</th><th>Parcelas</th><th>Valor parcela</th><th>Pagamento</th><th>Status</th><th>Recibo</th></tr>
             </thead>
             <tbody>
                 {% for sale in sales %}
                 <tr>
+                    <td>#{{ sale.id }}</td>
                     <td>{{ sale.sale_date }}</td>
                     <td>{{ sale.customer }}</td>
                     <td>{{ sale.vehicle }}</td>
@@ -99,12 +100,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const saleHidden = document.getElementById('sale_price');
     const installmentDisplay = document.getElementById('installment_value_display');
     const installmentHidden = document.getElementById('installment_value');
+    const installmentsInput = document.getElementById('installments');
+
+    function syncInstallmentValue() {
+        if (installmentsInput && installmentsInput.value > 1) {
+            const saleValue = parseBR(saleDisplay.value);
+            const installmentValue = saleValue / parseInt(installmentsInput.value || 1, 10);
+            if (installmentDisplay) {
+                installmentDisplay.value = formatBR(installmentValue);
+            }
+        }
+    }
 
     if (saleDisplay) {
         saleDisplay.addEventListener('input', (e) => {
             const parsed = parseBR(e.target.value);
             e.target.value = formatBR(parsed);
+            syncInstallmentValue();
         });
+    }
+    if (installmentsInput) {
+        installmentsInput.addEventListener('input', syncInstallmentValue);
     }
     if (installmentDisplay) {
         installmentDisplay.addEventListener('input', (e) => {

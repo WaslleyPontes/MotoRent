@@ -19,8 +19,8 @@
     </article>
     <article class="card metric-card">
         <div class="metric-header"><span class="metric-icon">⚠️</span><h2>Inadimplência</h2></div>
-        <p class="value">0</p>
-        <p class="small-text">Contagem de pagamentos com status = atrasado</p>
+        <p class="value">{{ overdue_payments }}</p>
+        <p class="small-text">Pagamentos com status atrasado</p>
     </article>
     <article class="card metric-card centered">
         <div class="metric-header"><span class="metric-icon">💰</span><h2>Receita paga</h2></div>
@@ -52,6 +52,19 @@
     <div class="panel finance-panel">
         <div class="panel-header"><h3>Lucro por veículo</h3></div>
         <canvas id="profitChart" height="160"></canvas>
+    </div>
+</section>
+
+<section class="dashboard-grid finance-grid">
+    <div class="panel finance-panel">
+        <div class="panel-header"><h3>Resumo operacional</h3></div>
+        <ul class="summary-list">
+            <li><strong>{{ available_vehicles }}</strong> veículos disponíveis para locação.</li>
+            <li><strong>{{ active_rentals }}</strong> motos atualmente em uso.</li>
+            <li><strong>{{ maintenance_vehicles }}</strong> veículos em manutenção.</li>
+            <li><strong>R$ {{ '%.2f' | format(overdue_amount) }}</strong> em valores em atraso.</li>
+            <li><strong>R$ {{ '%.2f' | format(pending_amount) }}</strong> aguardando pagamento.</li>
+        </ul>
     </div>
 </section>
 

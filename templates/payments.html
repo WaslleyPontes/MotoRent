@@ -5,19 +5,19 @@
     <section class="metrics-section">
         <div class="metric-card">
             <div class="metric-header"><span class="metric-icon">💰</span><h3>Total pago</h3></div>
-            <p class="large-value">R$ 0.00</p>
+            <p class="large-value">R$ {{ '%.2f'|format(paid_amount) }}</p>
         </div>
         <div class="metric-card">
             <div class="metric-header"><span class="metric-icon">⏳</span><h3>Pendente</h3></div>
-            <p class="large-value">R$ 0.00</p>
+            <p class="large-value">R$ {{ '%.2f'|format(pending_amount) }}</p>
         </div>
         <div class="metric-card">
             <div class="metric-header"><span class="metric-icon">⚠️</span><h3>Atrasado</h3></div>
-            <p class="large-value">R$ 0.00</p>
+            <p class="large-value">R$ {{ '%.2f'|format(overdue_amount) }}</p>
         </div>
         <div class="metric-card">
             <div class="metric-header"><span class="metric-icon">📊</span><h3>Total de transações</h3></div>
-            <p class="large-value">0</p>
+            <p class="large-value">{{ total_payments }}</p>
         </div>
     </section>
 
@@ -76,7 +76,15 @@
                 <tr><th>Método</th><th>Quantidade</th><th>Total</th></tr>
             </thead>
             <tbody>
-                <!-- Métodos de pagamento zerados -->
+                {% for method in payment_methods %}
+                    <tr>
+                        <td>{{ method.payment_method }}</td>
+                        <td>{{ method.count }}</td>
+                        <td>R$ {{ '%.2f'|format(method.total or 0) }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="3">Nenhum método registrado.</td></tr>
+                {% endfor %}
             </tbody>
         </table>
     </section>
@@ -90,7 +98,18 @@
                 <tr><th>Cliente</th><th>Veículo</th><th>Valor</th><th>Data</th><th>Status</th><th>Método</th></tr>
             </thead>
             <tbody>
-                <!-- Transações recentes zeradas -->
+                {% for payment in recent_payments %}
+                    <tr>
+                        <td>{{ payment.customer_name }}</td>
+                        <td>{{ payment.vehicle_model or '—' }}</td>
+                        <td>R$ {{ '%.2f'|format(payment.amount) }}</td>
+                        <td>{{ payment.due_date }}</td>
+                        <td>{{ payment.status }}</td>
+                        <td>{{ payment.payment_method or '—' }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6">Nenhuma transação registrada.</td></tr>
+                {% endfor %}
             </tbody>
         </table>
     </section>
