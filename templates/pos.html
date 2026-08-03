@@ -25,7 +25,7 @@
             </div>
             <div class="form-group">
                 <label for="sale_price_display">Preço de venda</label>
-                <input type="text" name="sale_price_display" id="sale_price_display" required placeholder="0,00" />
+                <input type="text" name="sale_price_display" id="sale_price_display" required placeholder="0,00" inputmode="decimal" autocomplete="off" />
                 <input type="hidden" name="sale_price" id="sale_price" />
             </div>
             <div class="form-group">
@@ -34,7 +34,7 @@
             </div>
             <div class="form-group">
                 <label for="installment_value_display">Valor da parcela</label>
-                <input type="text" name="installment_value_display" id="installment_value_display" required placeholder="0,00" />
+                <input type="text" name="installment_value_display" id="installment_value_display" required placeholder="0,00" inputmode="decimal" autocomplete="off" />
                 <input type="hidden" name="installment_value" id="installment_value" />
             </div>
             <div class="form-group">
@@ -91,9 +91,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return parseFloat(clean) || 0;
     }
 
-    function formatBR(value) {
-        const num = Number(value) || 0;
-        return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function formatCurrency(value) {
+        const digits = String(value).replace(/\D/g, '');
+        if (!digits) return '';
+        if (digits.length === 1) return '0,0' + digits;
+        if (digits.length === 2) return '0,' + digits;
+        const intPart = digits.slice(0, -2);
+        const decPart = digits.slice(-2);
+        return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + decPart;
     }
 
     const saleDisplay = document.getElementById('sale_price_display');
@@ -103,19 +108,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const installmentsInput = document.getElementById('installments');
 
     function syncInstallmentValue() {
-        if (installmentsInput && installmentsInput.value > 1) {
+        if (installmentsInput && parseInt(installmentsInput.value || 1, 10) > 1) {
             const saleValue = parseBR(saleDisplay.value);
             const installmentValue = saleValue / parseInt(installmentsInput.value || 1, 10);
             if (installmentDisplay) {
-                installmentDisplay.value = formatBR(installmentValue);
+                installmentDisplay.value = formatCurrency(Math.round(installmentValue * 100));
             }
         }
     }
 
     if (saleDisplay) {
         saleDisplay.addEventListener('input', (e) => {
-            const parsed = parseBR(e.target.value);
-            e.target.value = formatBR(parsed);
+            e.target.value = formatCurrency(e.target.value);
             syncInstallmentValue();
         });
     }
@@ -124,8 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (installmentDisplay) {
         installmentDisplay.addEventListener('input', (e) => {
-            const parsed = parseBR(e.target.value);
-            e.target.value = formatBR(parsed);
+            e.target.value = formatCurrency(e.target.value);
         });
     }
 

@@ -145,12 +145,21 @@ def ensure_schema_migrations(db):
     db.commit()
 
 
+def cleanup_orphaned_financial_records(db):
+    db.execute('DELETE FROM payments WHERE customer_id NOT IN (SELECT id FROM customers) OR vehicle_id NOT IN (SELECT id FROM vehicles)')
+    db.execute('DELETE FROM sales WHERE customer_id NOT IN (SELECT id FROM customers) OR vehicle_id NOT IN (SELECT id FROM vehicles)')
+    db.execute('DELETE FROM reservations WHERE customer_id NOT IN (SELECT id FROM customers) OR vehicle_id NOT IN (SELECT id FROM vehicles)')
+    db.execute('DELETE FROM fines WHERE customer_id NOT IN (SELECT id FROM customers) OR vehicle_id NOT IN (SELECT id FROM vehicles)')
+    db.commit()
+
+
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DB_PATH)
         db.row_factory = sqlite3.Row
         ensure_schema_migrations(db)
+        cleanup_orphaned_financial_records(db)
     return db
 
 
@@ -377,15 +386,15 @@ def index():
     active_rentals = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'alugado'", one=True)['count']
     available_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'disponível'", one=True)['count']
     maintenance_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'manutenção'", one=True)['count']
-    overdue_payments = query_db("SELECT COUNT(*) AS count FROM payments WHERE status = 'atrasado'", one=True)['count']
-    overdue_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'atrasado'", one=True)['total'] or 0
-    total_income = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pago'", one=True)['total'] or 0
-    pending_amount = query_db("SELECT SUM(amount) AS total FROM payments WHERE status = 'pendente'", one=True)['total'] or 0
-    predicted_revenue = query_db("SELECT SUM(amount) AS total FROM payments WHERE status != 'pago' AND due_date >= date('now')", one=True)['total'] or 0
+    overdue_payments = query_db("SELECT COUNT(*) AS count FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = 'atrasado'", one=True)['count']
+    overdue_amount = query_db("SELECT SUM(p.amount) AS total FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = 'atrasado'", one=True)['total'] or 0
+    total_income = query_db("SELECT SUM(p.amount) AS total FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = 'pago'", one=True)['total'] or 0
+    pending_amount = query_db("SELECT SUM(p.amount) AS total FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = 'pendente'", one=True)['total'] or 0
+    predicted_revenue = query_db("SELECT SUM(p.amount) AS total FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status != 'pago' AND due_date >= date('now')", one=True)['total'] or 0
     operational_vehicles = query_db("SELECT COUNT(*) AS count FROM vehicles WHERE status = 'disponível' OR status = 'alugado'", one=True)['count']
     occupancy_rate = round((active_rentals / total_vehicles * 100) if total_vehicles else 0, 1)
 
-    revenue_by_month = [dict(row) for row in query_db("SELECT strftime('%Y-%m', due_date) AS month, SUM(amount) AS total FROM payments WHERE status = 'pago' GROUP BY month ORDER BY month DESC LIMIT 6")]
+    revenue_by_month = [dict(row) for row in query_db("SELECT strftime('%Y-%m', due_date) AS month, SUM(p.amount) AS total FROM payments p JOIN customers c ON p.customer_id = c.id JOIN vehicles v ON p.vehicle_id = v.id WHERE p.status = 'pago' GROUP BY month ORDER BY month DESC LIMIT 6")]
 
     vehicle_revenues = query_db("SELECT v.id, v.model, v.brand, v.status, COALESCE(SUM(p.amount),0) AS revenue FROM vehicles v LEFT JOIN payments p ON p.vehicle_id = v.id AND p.status = 'pago' GROUP BY v.id ORDER BY revenue DESC")
     profit_by_vehicle = []
